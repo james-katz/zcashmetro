@@ -4,6 +4,11 @@ index.node
 **/.DS_Store
 npm-debug.log*
 
+.DS_Store
+node_modules
+/dist
+
+
 # local env files
 .env.local
 .env.*.local
