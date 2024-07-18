@@ -85,12 +85,12 @@ if(useHttps) {
       key: fs.readFileSync('privkey.pem'),
       cert: fs.readFileSync('cert.pem')
   };
-  https.createServer(options, app).listen(port);
-  console.log(`App listening at https://localhost:${port}`)
+  https.createServer(options, app).listen(PORT);
+  console.log(`App listening at https://localhost:${PORT}`)
 }
 else {
-  app.listen(port, () => {
-      console.log(`App listening at http://localhost:${port}`)
+  app.listen(PORT, () => {
+      console.log(`App listening at http://localhost:${PORT}`)
   });
 }
 

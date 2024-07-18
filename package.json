@@ -8,7 +8,8 @@
     "start": "cd server && node index.js",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
     "server": "cd server && nodemon index.js",
-    "client": "vite --host"
+    "client": "vite --host",
+    "build": "vite build"
   },
   "keywords": [],
   "author": "",
