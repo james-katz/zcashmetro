@@ -150,12 +150,12 @@ class MainScene extends Phaser.Scene {
             const path = bfs(start, goal, this.grid);
             
             // Add NPCs in a timeout, to avoid creating each new npc at once.
-            this.time.delayedCall(300, () => {
+            // setTimeout(() => {
               const npc = new NPC(this, tx.txid, this.map.tileToWorldX(spawnx), this.map.tileToWorldY(spawny), 'zebra', this.scaleFactor);            
               this.npcs.push(npc);
               // this.physics.add.collider(this.npcs, layer);
               npc.moveAlongPath(path, false);              
-            });
+            // },300);
           }
         });        
 

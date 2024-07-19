@@ -48,7 +48,7 @@ class NPC extends Phaser.Physics.Arcade.Sprite {
       tweens: path.map(p => ({
         x: (p.x * 12 + (p.x < 24 ? 12 : 0)) * this.scaleFactor,
         y: (p.y * 12) * this.scaleFactor,
-        duration: speed + Math.random() * 10
+        duration: speed + Math.random() * 30
       })),
       onComplete: () => {
         if(rush) {
