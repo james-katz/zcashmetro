@@ -11,7 +11,8 @@ class MainScene extends Phaser.Scene {
     this.npcs = [];
     this.dataLock;
     this.lastTime = 0;
-    this.timeInterval = 3000;     
+    this.timeInterval = 3000;    
+    this.bgInterval; 
   }
 
   init(data) {
@@ -110,13 +111,31 @@ class MainScene extends Phaser.Scene {
     // When tabs are switched, restart the scene to avois weird behaviour
     this.game.events.on('blur', () => {      
       this.blured = true;
+      if(this.bgInterval) {
+        console.log("bg interval already running")
+        return;
+      }
+      console.log("Starting bg interval stuff");
+      this.bgInterval = setInterval(() => {
+        this.npcs.forEach(async (npc) => {  
+          const res = await http.get(`/txinfo/?txid=${npc.txid}`);
+    
+          if(res.data.height > 0) {
+            npc.tooltip.destroy();
+            npc.destroy();
+            this.npcs.splice(this.npcs.indexOf(npc), 1);
+          }
+        });
+      }, 1000);
     }, this);
         
     this.game.events.on('focus', () => {
       if(this.blured) {
-        // console.log("Reloading scene ...")        
+        console.log("Clearing bg interval ...")        
         // this.scene.restart({npcData:this.npcs, block:{height: this.currHeight}});
         // this.npcs = [];
+        clearInterval(this.bgInterval);
+        this.bgInterval = undefined;
         this.blured = false;
       }
     }, this);
