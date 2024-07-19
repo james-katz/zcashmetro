@@ -111,31 +111,40 @@ class MainScene extends Phaser.Scene {
     // When tabs are switched, restart the scene to avois weird behaviour
     this.game.events.on('blur', () => {      
       this.blured = true;
-      if(this.bgInterval) {
-        console.log("bg interval already running")
-        return;
-      }
-      console.log("Starting bg interval stuff");
-      this.bgInterval = setInterval(() => {
+      // if(this.bgInterval) {
+      //   console.log("bg interval already running")
+      //   return;
+      // }
+      // console.log("Starting bg interval stuff");
+      // this.bgInterval = setInterval(() => {
+      //   this.npcs.forEach(async (npc) => {  
+      //     const res = await http.get(`/txinfo/?txid=${npc.txid}`);
+    
+      //     if(res.data.height > 0) {
+      //       npc.tooltip.destroy();
+      //       npc.destroy();
+      //       this.npcs.splice(this.npcs.indexOf(npc), 1);
+      //     }
+      //   });
+      // }, 1000);
+    }, this);
+        
+    this.game.events.on('focus', () => {
+      if(this.blured) {
+        console.log("When focus is back to this tab, remove previous mined txns ...")        
         this.npcs.forEach(async (npc) => {  
           const res = await http.get(`/txinfo/?txid=${npc.txid}`);
-    
-          if(res.data.height > 0) {
+  
+         if(res.data.height > 0) {
+            const npc_tweens = this.tweens.getTweensOf(npc);
+            if(npc_tweens[0]) npc_tweens[0].destroy();
             npc.tooltip.destroy();
             npc.destroy();
             this.npcs.splice(this.npcs.indexOf(npc), 1);
           }
         });
-      }, 1000);
-    }, this);
-        
-    this.game.events.on('focus', () => {
-      if(this.blured) {
-        console.log("Clearing bg interval ...")        
-        // this.scene.restart({npcData:this.npcs, block:{height: this.currHeight}});
-        // this.npcs = [];
-        clearInterval(this.bgInterval);
-        this.bgInterval = undefined;
+        // clearInterval(this.bgInterval);
+        // this.bgInterval = undefined;
         this.blured = false;
       }
     }, this);
