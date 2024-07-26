@@ -165,7 +165,7 @@ class MainScene extends Phaser.Scene {
 
       await http.get('/mempool').then((res) => {
         mempool = res.data
-        mempool.forEach(tx => {
+        mempool.forEach(async (tx) => {
           if(this.npcs.filter((npc) => npc.txid == tx.txid).length == 0) {
             // console.log(tx.txid);
 
@@ -178,11 +178,16 @@ class MainScene extends Phaser.Scene {
             const path = bfs(start, goal, this.grid);
             
             // Add NPCs in a timeout, to avoid creating each new npc at once.
-            // setTimeout(() => {
-              const npc = new NPC(this, tx.txid, this.map.tileToWorldX(spawnx), this.map.tileToWorldY(spawny), 'zebra', this.scaleFactor);            
-              this.npcs.push(npc);
-              // this.physics.add.collider(this.npcs, layer);
-              npc.moveAlongPath(path, false);              
+            // setTimeout(async () => {
+              // Double check if tx is in mempool
+              const res = await http.get(`/txinfo/?txid=${tx.txid}`);
+              if(res.data.height < 0 && !this.blured) {
+                const npc = new NPC(this, tx.txid, this.map.tileToWorldX(spawnx), this.map.tileToWorldY(spawny), 'zebra', this.scaleFactor);            
+                this.npcs.push(npc);
+                // this.physics.add.collider(this.npcs, layer);
+                npc.moveAlongPath(path, false);           
+                // this.events.once   
+              }
             // },300);
           }
         });        
@@ -200,6 +205,8 @@ class MainScene extends Phaser.Scene {
           // Keep any unmied tx and send the rest to the train
           // mempool = await http.get('/mempool');
           
+          // let minedCount = 0;
+
           this.npcs.forEach(async (npc) => {  
             const res = await http.get(`/txinfo/?txid=${npc.txid}`);
       
@@ -221,6 +228,13 @@ class MainScene extends Phaser.Scene {
               const goal = this.grid[posy][posx];
               const path_to_train = bfs(start, goal, this.grid);
               npc.moveAlongPath(path_to_train, true);
+
+              this.events.once('done', () => {
+                // console.log('done, sending train away')
+                if(!this.blured) {
+                  this.train.depart();
+                }
+              });
       
               this.npcs.splice(this.npcs.indexOf(npc), 1);
             }
@@ -229,7 +243,9 @@ class MainScene extends Phaser.Scene {
             }           
           });
           
-          this.time.delayedCall(1500, () => {this.train.depart()});
+          // this.time.delayedCall(1500, () => {
+            // if(!this.blured) this.train.depart()
+          // });
         }
 
         this.dataLock = false;

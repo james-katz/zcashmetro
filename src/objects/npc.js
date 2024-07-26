@@ -54,6 +54,7 @@ class NPC extends Phaser.Physics.Arcade.Sprite {
         if(rush) {
           this.tooltip.destroy();          
           this.destroy();
+          this.scn.events.emit('done');
         }
       }
     });

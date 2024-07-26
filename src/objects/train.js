@@ -27,12 +27,12 @@ class Train extends Phaser.Physics.Arcade.Sprite {
         ease: 'Quad.easeInOut',
         duration: 2000,   
         repeat: false,
-        loop: false   
-        // delay: 500
+        loop: false,
+        delay: 1500
       }
     ],
     onComplete: () => {
-      this.trainAnim.stop();
+      // this.trainAnim.stop();
       this.arrive();      
     }
     });
