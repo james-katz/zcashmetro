@@ -242,10 +242,10 @@ class MainScene extends Phaser.Scene {
               console.log(`Keeping ${npc.txid}`);
             }           
           });
+
+          // The train should leave even if it's empty
+          if(this.npcs.length == 0 && !this.blured) this.train.depart();
           
-          // this.time.delayedCall(1500, () => {
-            // if(!this.blured) this.train.depart()
-          // });
         }
 
         this.dataLock = false;
