@@ -135,11 +135,11 @@ class MainScene extends Phaser.Scene {
         this.npcs.forEach(async (npc) => {  
           const res = await http.get(`/txinfo/?txid=${npc.txid}`);
   
-         if(res.data.height > 0) {
+         if(res.data.height > 0 || res.data.error) {
             const npc_tweens = this.tweens.getTweensOf(npc);
             if(npc_tweens[0]) npc_tweens[0].destroy();
             npc.tooltip.destroy();
-            npc.destroy();
+            npc.destroy();            
             this.npcs.splice(this.npcs.indexOf(npc), 1);
           }
         });
@@ -186,14 +186,12 @@ class MainScene extends Phaser.Scene {
                 this.npcs.push(npc);
                 // this.physics.add.collider(this.npcs, layer);
                 npc.moveAlongPath(path, false);           
-                // this.events.once   
               }
             // },300);
           }
         });        
 
         this.mempoolSign.updateText(`In mempool\n${this.npcs.length}`)
-
       });        
 
       await http.get('/latestblock').then(async (res) => {
@@ -206,6 +204,7 @@ class MainScene extends Phaser.Scene {
           // mempool = await http.get('/mempool');
           
           // let minedCount = 0;
+          let trainDeparted = false;
 
           this.npcs.forEach(async (npc) => {  
             const res = await http.get(`/txinfo/?txid=${npc.txid}`);
@@ -231,7 +230,8 @@ class MainScene extends Phaser.Scene {
 
               this.events.once('done', () => {
                 // console.log('done, sending train away')
-                if(!this.blured) {
+                trainDeparted = true;
+                if(!trainDeparted && !this.blured) {
                   this.train.depart();
                 }
               });
@@ -243,8 +243,9 @@ class MainScene extends Phaser.Scene {
             }           
           });
 
-          // The train should leave even if it's empty
-          if(this.npcs.length == 0 && !this.blured) this.train.depart();
+          // The train should leave even if it's empty   
+          const train_tweens = this.tweens.getTweensOf(this.train);          
+          if(!trainDeparted && !this.blured && !train_tweens[0]) this.train.depart();
           
         }
 

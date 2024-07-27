@@ -32,7 +32,7 @@ class Train extends Phaser.Physics.Arcade.Sprite {
       }
     ],
     onComplete: () => {
-      // this.trainAnim.stop();
+      // this.trainAnim.destroy();
       this.arrive();      
     }
     });

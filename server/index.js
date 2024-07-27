@@ -26,8 +26,6 @@ let mempoolTx = [];
 let dbLock = false;
 
 async function addTxToDatabase(tx) {
-  // while(dbLock);
-
   dbLock = true;
   const rec = await sequelize.models.transaction.create( {
     id: tx.txid,
@@ -50,20 +48,28 @@ app.get('/latestblock', async (req, res) => {
 });
 
 app.get('/txinfo', async (req, res) => {    
-    
-    const tx = await grpc.getTransaction(client, req.query.txid);
-      // Workaround to work with uint64. -1 means a tx that wasn't minet yet
-      if((tx.height - (2**64-1) - 1) != -1) {
-        res.json({height: tx.height})        
-      }
-      else {
-        res.json({height: -1});
-      }
+  let tx;
+  try {
+    tx = await grpc.getTransaction(client, req.query.txid);
+    // Workaround to work with uint64. -1 means a tx that wasn't minet yet
+    if((tx.height - (2**64-1) - 1) != -1) {
+      res.json({height: tx.height})        
+    }
+    else {
+      res.json({height: -1});
+    }
+  }
+  catch(e) {
+    // tx is invalid somehow, if it's in db, destroy it
+    const TxModel = sequelize.models.transaction;  
+    TxModel.findOne({where: {id: tx}}).then(async (t) => {
+      await t.destroy();
+    });
+    res.json({height: -1, error: true});
+  }
 });
 
 app.get('/mempool', async (req, res) => {
-  // while(dbLock);
-
   let tx_list = new Map();
   try {
     const db_tx = await sequelize.models.transaction.findAll();
@@ -143,7 +149,7 @@ async function listenForMempool() {
     const temp = [];
     for(tx of mempoolTx) {
       const t = await grpc.getTransaction(client, tx.txid);
-      console.log(t.height)
+      // console.log(t.height)
       // Workaround to work with uint64. -1 means a tx that wasn't minet yet
       if((t.height - (2**64-1) - 1) != -1) {
         console.log(`${tx.txid} mined, removing it from db ...`);
