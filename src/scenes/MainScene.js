@@ -11,7 +11,7 @@ class MainScene extends Phaser.Scene {
     this.npcs = [];
     this.dataLock;
     this.lastTime = 0;
-    this.timeInterval = 3000;    
+    this.timeInterval = 1000;    
     this.bgInterval; 
   }
 
@@ -126,12 +126,12 @@ class MainScene extends Phaser.Scene {
       //       this.npcs.splice(this.npcs.indexOf(npc), 1);
       //     }
       //   });
-      // }, 1000);
+      // }, 2000);
     }, this);
         
     this.game.events.on('focus', () => {
       if(this.blured) {
-        console.log("When focus is back to this tab, remove previous mined txns ...")        
+        console.log("When focus is back to this tab, remove already mined txns ...")        
         this.npcs.forEach(async (npc) => {  
           const res = await http.get(`/txinfo/?txid=${npc.txid}`);
   
@@ -181,7 +181,7 @@ class MainScene extends Phaser.Scene {
             // setTimeout(async () => {
               // Double check if tx is in mempool
               const res = await http.get(`/txinfo/?txid=${tx.txid}`);
-              if(res.data.height < 0 && !this.blured) {
+              if(res.data.height < 0) {
                 const npc = new NPC(this, tx.txid, this.map.tileToWorldX(spawnx), this.map.tileToWorldY(spawny), 'zebra', this.scaleFactor);            
                 this.npcs.push(npc);
                 // this.physics.add.collider(this.npcs, layer);
@@ -203,13 +203,13 @@ class MainScene extends Phaser.Scene {
           // Keep any unmied tx and send the rest to the train
           // mempool = await http.get('/mempool');
           
-          // let minedCount = 0;
           let trainDeparted = false;
 
           this.npcs.forEach(async (npc) => {  
             const res = await http.get(`/txinfo/?txid=${npc.txid}`);
-      
-            if(res.data.height > 0) {
+            
+            // Animete only newly mined tx
+            if(res.data.height > 0 && (res.data.height - this.currHeight) <= 1) {
               const npc_tweens = this.tweens.getTweensOf(npc);
               if(npc_tweens[0]) npc_tweens[0].destroy();
       
@@ -229,24 +229,35 @@ class MainScene extends Phaser.Scene {
               npc.moveAlongPath(path_to_train, true);
 
               this.events.once('done', () => {
-                // console.log('done, sending train away')
-                trainDeparted = true;
+                // console.log('done, sending train away')               
                 if(!trainDeparted && !this.blured) {
                   this.train.depart();
+                  trainDeparted = true;
                 }
               });
       
               this.npcs.splice(this.npcs.indexOf(npc), 1);
             }
+            //this should get older tx and delete them without sending them to the train
+            else if((res.data.height - this.currHeight) > 1) {
+              const npc_tweens = this.tweens.getTweensOf(npc);
+              if(npc_tweens[0]) npc_tweens[0].destroy();
+              npc.tooltip.destroy();
+              npc.destroy();            
+              this.npcs.splice(this.npcs.indexOf(npc), 1);
+            }
+            // If not mined yet, keep the tx
             else {
               console.log(`Keeping ${npc.txid}`);
             }           
           });
 
           // The train should leave even if it's empty   
-          const train_tweens = this.tweens.getTweensOf(this.train);          
-          if(!trainDeparted && !this.blured && !train_tweens[0]) this.train.depart();
-          
+          // const train_tweens = this.tweens.getTweensOf(this.train);          
+          if(!trainDeparted && !this.blured) {
+            this.train.depart();
+            trainDeparted = true;
+          }          
         }
 
         this.dataLock = false;
