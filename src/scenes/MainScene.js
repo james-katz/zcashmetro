@@ -181,7 +181,7 @@ class MainScene extends Phaser.Scene {
             // setTimeout(async () => {
               // Double check if tx is in mempool
               const res = await http.get(`/txinfo/?txid=${tx.txid}`);
-              if(res.data.height < 0) {
+              if(res.data.height < 0 && !res.data.error) {
                 const npc = new NPC(this, tx.txid, this.map.tileToWorldX(spawnx), this.map.tileToWorldY(spawny), 'zebra', this.scaleFactor);            
                 this.npcs.push(npc);
                 // this.physics.add.collider(this.npcs, layer);
@@ -208,8 +208,8 @@ class MainScene extends Phaser.Scene {
           this.npcs.forEach(async (npc) => {  
             const res = await http.get(`/txinfo/?txid=${npc.txid}`);
             
-            // Animete only newly mined tx
-            if(res.data.height > 0 && (res.data.height - this.currHeight) <= 1) {
+            // Animete only mined tx
+            if(res.data.height > 0) {
               const npc_tweens = this.tweens.getTweensOf(npc);
               if(npc_tweens[0]) npc_tweens[0].destroy();
       
@@ -237,15 +237,7 @@ class MainScene extends Phaser.Scene {
               });
       
               this.npcs.splice(this.npcs.indexOf(npc), 1);
-            }
-            //this should get older tx and delete them without sending them to the train
-            else if((res.data.height - this.currHeight) > 1) {
-              const npc_tweens = this.tweens.getTweensOf(npc);
-              if(npc_tweens[0]) npc_tweens[0].destroy();
-              npc.tooltip.destroy();
-              npc.destroy();            
-              this.npcs.splice(this.npcs.indexOf(npc), 1);
-            }
+            }            
             // If not mined yet, keep the tx
             else {
               console.log(`Keeping ${npc.txid}`);

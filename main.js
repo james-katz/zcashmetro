@@ -27,14 +27,3 @@ const config = {
 };
 
 const game = new Phaser.Game(config);
-
-// window.addEventListener('load', () => {
-//   const canvas = document.querySelector('canvas');
-
-//   if (canvas) {
-//     canvas.addEventListener('wheel', (event) => {
-//       event.preventDefault();
-//       window.scrollBy(0, event.deltaY);
-//     });
-//   }
-// });

@@ -62,9 +62,14 @@ app.get('/txinfo', async (req, res) => {
   catch(e) {
     // tx is invalid somehow, if it's in db, destroy it
     const TxModel = sequelize.models.transaction;  
-    TxModel.findOne({where: {id: tx}}).then(async (t) => {
-      await t.destroy();
-    });
+    try {
+      TxModel.findOne({where: {id: tx}}).then(async (t) => {
+        await t.destroy();
+      });
+    }
+    catch(e) {
+      console.log("tx not in database or txid is undefined");
+    }
     res.json({height: -1, error: true});
   }
 });
