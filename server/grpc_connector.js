@@ -66,8 +66,8 @@ function getTransaction(client, filter) {
             });
         }
         catch(err) {
-            reject(err);
             console.log("getTransaction error", err);
+            reject(err);            
         }
     }); 
 }

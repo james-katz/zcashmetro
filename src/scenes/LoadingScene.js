@@ -8,6 +8,13 @@ class LoadingScene extends Phaser.Scene {
   
     preload() {
       // You can preload assets for the loading screen here
+      this.load.image('tileset', './assets/tileset.png');
+      this.load.image('train', './assets/train.png')
+      this.load.image('zebra', './assets/zebra.png');
+      this.load.image('bronze', './assets/bronze.png');
+      this.load.image('silver', './assets/silver.png');
+      this.load.image('gold', './assets/gold.png');
+      this.load.tilemapTiledJSON('map', './assets/station.json');      
     }
   
     create() {

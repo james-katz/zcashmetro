@@ -27,9 +27,37 @@ let dbLock = false;
 
 async function addTxToDatabase(tx) {
   dbLock = true;
+
+  let txtype = "unknown";
+  if (tx.n_transparent_vin > 0) {
+      if (tx.n_transparent_vout > 0) {
+          txtype = "t2t";
+      } else if (tx.n_sapling_output > 0) {
+          txtype = "t2z";
+      } else if (tx.n_orchard_action > 0) {
+          txtype = "t2o";
+      }
+  } else if (tx.n_sapling_spend > 0) {
+      if (tx.n_transparent_vout > 0) {
+          txtype = "z2t";
+      } else if (tx.n_sapling_output > 0) {
+          txtype = "z2z";
+      } else if (tx.n_orchard_action > 0) {
+          txtype = "z2o";
+      }
+  } else if (tx.n_orchard_action > 0) {
+      if (tx.n_transparent_vout > 0) {
+          txtype = "o2t";
+      } else if (tx.n_sapling_output > 0) {
+          txtype = "o2z";
+      } else {
+          txtype = "o2o";
+      }
+  }
+
   const rec = await sequelize.models.transaction.create( {
     id: tx.txid,
-    type: 'regular',      
+    type: txtype,      
   });
   if(rec instanceof sequelize.models.transaction) {
     console.log(`Added ${tx.txid}`);
@@ -48,9 +76,11 @@ app.get('/latestblock', async (req, res) => {
 });
 
 app.get('/txinfo', async (req, res) => {    
-  let tx;
+  let txid = req.query.txid;
   try {
-    tx = await grpc.getTransaction(client, req.query.txid);
+    if(!txid) throw("txid is undefined");
+
+    const tx = await grpc.getTransaction(client, txid);
     // Workaround to work with uint64. -1 means a tx that wasn't minet yet
     if((tx.height - (2**64-1) - 1) != -1) {
       res.json({height: tx.height})        
@@ -63,7 +93,8 @@ app.get('/txinfo', async (req, res) => {
     // tx is invalid somehow, if it's in db, destroy it
     const TxModel = sequelize.models.transaction;  
     try {
-      TxModel.findOne({where: {id: tx}}).then(async (t) => {
+      if(!txid) throw("txid is undefined");
+      TxModel.findOne({where: {id: txid}}).then(async (t) => {
         await t.destroy();
       });
     }
@@ -125,7 +156,7 @@ sequelize.authenticate().then(async () => {
 });
 
 async function listenForMempool() {
-  console.log("Starting new stream")
+  console.log("Starting new stream");  
   let txListener = grpc.getMempoolStream(client);
 
   txListener.on('newtx', async(tx) => {        
@@ -134,6 +165,11 @@ async function listenForMempool() {
     
     const newtx = {
       txid: txjson.txid.replaceAll('"', ''),
+      n_transparent_vin: txjson.n_transparent_vin,
+      n_transparent_vout: txjson.n_transparent_vout,
+      n_sapling_spend: txjson.n_sapling_spend,
+      n_sapling_output: txjson.n_sapling_output,
+      n_orchard_action: txjson.n_orchard_action,
       height: tx.height,
     };
     // console.log(newtx);
@@ -153,16 +189,27 @@ async function listenForMempool() {
     // Create a temporary list to hold unimed tx
     const temp = [];
     for(tx of mempoolTx) {
-      const t = await grpc.getTransaction(client, tx.txid);
-      // console.log(t.height)
-      // Workaround to work with uint64. -1 means a tx that wasn't minet yet
-      if((t.height - (2**64-1) - 1) != -1) {
-        console.log(`${tx.txid} mined, removing it from db ...`);
-        await TxModel.destroy({where: {id: tx.txid}});
+      try {
+        const t = await grpc.getTransaction(client, tx.txid);
+        // console.log(t.height)
+        // Workaround to work with uint64. -1 means a tx that wasn't minet yet
+        if((t.height - (2**64-1) - 1) != -1) {
+          console.log(`${tx.txid} mined, removing it from db ...`);
+          await TxModel.destroy({where: {id: tx.txid}});          
+        }
+        else {
+          console.log(`${tx.txid} not mined yet, keep it until it get mined`);
+          temp.push(tx);
+        }
       }
-      else {
-        console.log(`${tx.txid} not mined yet, keep it until it get mined`);
-        temp.push(tx);
+      catch(err) {
+        console.log("Transaction doesn't exist, remove it from db");
+        try {
+          await TxModel.destroy({where: {id: tx.txid}});
+        }
+        catch(err) {
+          console.log("tx is undefined");
+        }
       }
     }
 

@@ -1,32 +1,64 @@
 import Phaser from 'phaser';
 import Tooltip from './tooltip';
 
-class NPC extends Phaser.Physics.Arcade.Sprite {
-  constructor(scene, txid, x, y, texture, scl) {
-    super(scene, x, y, texture);
-    
+class NPC extends Phaser.GameObjects.Container {
+  constructor(scene, tx, x, y, scl) {
+    super(scene, x, y);       
+
     this.scn = scene;
     this.scaleFactor = scl;
 
-    this.txid = txid;    
+    this.txid = tx.txid;    
+    this.type = tx.type;
+    this.typeText = "Transparent";
+    this.shieldTexture;
+    if(this.type == "t2z" || this.type == "t2o") {
+      this.shieldTexture = 'bronze';
+      this.typeText = "Shielding";
+    }
+    else if(this.type == "z2t" || this.type == "o2t") {
+      this.shieldTexture = 'bronze';
+      this.typeText = "Deshielding";
+    }
+    else if(this.type == "z2o" || this.type == "o2z") {
+      this.shieldTexture = 'silver';
+      this.typeText = "Partially Shielded";
+    }
+    else if(this.type == "z2z" || this.type == "o2o") {
+      this.shieldTexture = 'gold';
+      this.typeText = "Fully Shielded";
+    }
 
     // Add this NPC to the scene's physics engine
-    this.scn.physics.world.enable(this);
+    // this.scn.physics.world.enable(this);
+    
+    this.zebra = this.scn.add.sprite(0, 0, 'zebra');
+    this.zebra.setDisplaySize(24 * this.scaleFactor, 24 * this.scaleFactor);
+    this.add(this.zebra);    
+
+    // Put a shield image
+    if(this.shieldTexture) {
+      this.shield = this.scn.add.sprite(16, 20, this.shieldTexture);
+      this.shield.setDisplaySize(16 * this.scaleFactor, 16 * this.scaleFactor);
+      this.add(this.shield);
+    }
+
     this.scn.add.existing(this);
 
     // Set any custom properties or behaviors here
     // this.setCollideWorldBounds(true);
-    this.setDisplaySize(24 * this.scaleFactor, 24 * this.scaleFactor);
+    // this.setDisplaySize(24 * this.scaleFactor, 24 * this.scaleFactor);
 
     // Enable input on this sprite
+    this.setSize(this.zebra.displayWidth, this.zebra.displayHeight); // Set the container's hitbox size
     this.setInteractive();
-
+    
     // Create tooltip instance
     this.tooltip = new Tooltip(scene);
 
     // Event listeners for hover and click
     this.on('pointerover', () => {
-      this.tooltip.show(this.x, this.y - 64, `${this.txid}`);
+      this.tooltip.show(this.x, this.y - 96, `Transaction ID:\n${this.txid}\n\nType: ${this.typeText} `);
     });
 
     this.on('pointerout', () => {

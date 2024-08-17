@@ -5,15 +5,15 @@ class Tooltip extends Phaser.GameObjects.Container {
         this.keepVisible = false;
 
         // Create the background rectangle for the tooltip
-        this.background = scene.add.rectangle(0, 0, 150, 50, 0x000000, 0.8);
+        this.background = scene.add.rectangle(0, 0, 180, 50, 0x000000, 0.8);
         this.background.setOrigin(0.5, 0.5);
 
         // Create the text for the tooltip
         this.text = scene.add.text(0, 0, '', {
-        fontSize: '18px',
-        fill: '#ffffff',
-        align: 'center',
-        wordWrap: { width: 256, useAdvancedWrap: true }
+            fontSize: '18px',
+            fill: '#ffffff',
+            align: 'center',
+            wordWrap: { width: 320, useAdvancedWrap: true }
         });
         this.text.setOrigin(0.5, 0.5);
 

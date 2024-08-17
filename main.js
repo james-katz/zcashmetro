@@ -4,7 +4,7 @@ import LoadingScene from './src/scenes/LoadingScene';
 
 const config = {
   type: Phaser.AUTO,
-  width: window.innerWidth * 0.70,
+  width: window.innerWidth * 0.72,
   height: window.innerHeight,
   pixelArt: true,
   scene: [LoadingScene, MainScene],

@@ -17,7 +17,8 @@ class Train extends Phaser.Physics.Arcade.Sprite {
   }
 
   // You can add custom methods for the train here
-  depart() {            
+  depart() {     
+    if(this.trainAnim) return;
     this.trainAnim = this.scn.tweens.chain({
       targets: this,      
       tweens: [
@@ -32,14 +33,16 @@ class Train extends Phaser.Physics.Arcade.Sprite {
       }
     ],
     onComplete: () => {
-      // this.trainAnim.destroy();
+      this.trainAnim.destroy();
+      this.trainAnim = undefined;
       this.arrive();      
     }
     });
   }
 
   arrive() {   
-    this.x = -65 * 12 * this.scaleFactor;         
+    if(this.trainAnim) return;
+    this.x = -65 * 12 * this.scaleFactor;        
     this.trainAnim = this.scn.tweens.chain({
       targets: this,      
       tweens: [
@@ -52,7 +55,9 @@ class Train extends Phaser.Physics.Arcade.Sprite {
       }
     ],
     onComplete: () => {
-      this.trainAnim.stop();      
+      // this.trainAnim.stop();   
+      this.trainAnim.destroy();
+      this.trainAnim = undefined;   
     }
     });
   }

@@ -22,11 +22,14 @@ class MainScene extends Phaser.Scene {
   }
 
   preload() {
-    // Load assets here
-      this.load.image('tileset', './assets/tileset.png');
-      this.load.image('train', './assets/train.png')
-      this.load.image('zebra', './assets/zebra.png');
-      this.load.tilemapTiledJSON('map', './assets/station.json');      
+    // Load assets here (TODO: move this to LoadingScene)
+      // this.load.image('tileset', './assets/tileset.png');
+      // this.load.image('train', './assets/train.png')
+      // this.load.image('zebra', './assets/zebra.png');
+      // this.load.image('bronze', './assets/bronze.png');
+      // this.load.image('silver', './assets/silver.png');
+      // this.load.image('gold', './assets/gold.png');
+      // this.load.tilemapTiledJSON('map', './assets/station.json');      
   }
 
   create() {
@@ -38,6 +41,8 @@ class MainScene extends Phaser.Scene {
     const mapHeight = 62;
     const mapWidthInPixels = mapWidth * tileWidth;
     const mapHeightInPixels = mapHeight * tileWidth;
+
+    this.blured = false;
 
     // Calculate scale factor to fit the map to the canvas width
     this.scaleFactor = canvasWidth / mapWidthInPixels;
@@ -97,7 +102,7 @@ class MainScene extends Phaser.Scene {
       // console.log(tx)
       let posx = (2+Math.random()*41) * this.map.tileWidth * this.scaleFactor;
       let posy = (19 + Math.random()*8) * this.map.tileHeight * this.scaleFactor;
-      const npc = new NPC(this, tx.txid, posx, posy, 'zebra', this.scaleFactor);
+      const npc = new NPC(this, tx, posx, posy, this.scaleFactor);
       this.npcs.push(npc);
       this.physics.add.collider(this.npcs, layer);
     }
@@ -108,51 +113,56 @@ class MainScene extends Phaser.Scene {
     
     this.enableCameraScrolling();
 
-    // When tabs are switched, restart the scene to avois weird behaviour
+    // When tabs are switched, try to keed txns in sync
     this.game.events.on('blur', () => {      
       this.blured = true;
-      // if(this.bgInterval) {
-      //   console.log("bg interval already running")
-      //   return;
-      // }
-      // console.log("Starting bg interval stuff");
-      // this.bgInterval = setInterval(() => {
-      //   this.npcs.forEach(async (npc) => {  
-      //     const res = await http.get(`/txinfo/?txid=${npc.txid}`);
-    
-      //     if(res.data.height > 0) {
-      //       npc.tooltip.destroy();
-      //       npc.destroy();
-      //       this.npcs.splice(this.npcs.indexOf(npc), 1);
-      //     }
-      //   });
-      // }, 2000);
+      const train_tweens = this.tweens.getTweensOf(this.train);
+      if(train_tweens[0] && train_tweens[0].isPlaying()) {
+        // train_tweens[0].stop();
+        // this.train.arrive();
+      }
+
+      this.npcs.forEach(async (npc) => {  
+        const npc_tweens = this.tweens.getTweensOf(npc);
+        if(npc_tweens[0] && npc_tweens[0].isPlaying()) {
+          npc_tweens[0].pause();
+        }
+      });
     }, this);
         
-    this.game.events.on('focus', () => {
+    this.game.events.on('focus', () => {      
       if(this.blured) {
+        this.blured = false;
+
+        this.dataLock = true;
+        
         console.log("When focus is back to this tab, remove already mined txns ...")        
         this.npcs.forEach(async (npc) => {  
+          const npc_tweens = this.tweens.getTweensOf(npc);
+
           const res = await http.get(`/txinfo/?txid=${npc.txid}`);
   
-         if(res.data.height > 0 || res.data.error) {
-            const npc_tweens = this.tweens.getTweensOf(npc);
-            if(npc_tweens[0]) npc_tweens[0].destroy();
+          if(res.data.height > 0 || res.data.error) {            
+            if(npc_tweens[0] && npc_tweens[0].isPlaying()) {
+              // npc_tweens[0].stop();
+              npc_tweens[0].destroy();
+            }
             npc.tooltip.destroy();
             npc.destroy();            
             this.npcs.splice(this.npcs.indexOf(npc), 1);
           }
-        });
-        // clearInterval(this.bgInterval);
-        // this.bgInterval = undefined;
-        this.blured = false;
+          else {
+            if(npc_tweens[0]) npc_tweens[0].resume();
+          }
+        });        
+        this.dataLock = false;
       }
     }, this);
   }
 
   async update(time, delta) {
     // Update your scene here
-    if(time - this.lastTime >= this.timeInterval) {
+    if(time - this.lastTime >= this.timeInterval && !this.blured) {
       this.lastTime = time;
       if(this.dataLock) {
         console.log("Already processing ...")
@@ -182,9 +192,9 @@ class MainScene extends Phaser.Scene {
               // Double check if tx is in mempool
               const res = await http.get(`/txinfo/?txid=${tx.txid}`);
               if(res.data.height < 0 && !res.data.error) {
-                const npc = new NPC(this, tx.txid, this.map.tileToWorldX(spawnx), this.map.tileToWorldY(spawny), 'zebra', this.scaleFactor);            
-                this.npcs.push(npc);
+                const npc = new NPC(this, tx, this.map.tileToWorldX(spawnx), this.map.tileToWorldY(spawny), this.scaleFactor);            
                 // this.physics.add.collider(this.npcs, layer);
+                this.npcs.push(npc);
                 npc.moveAlongPath(path, false);           
               }
             // },300);
@@ -211,7 +221,10 @@ class MainScene extends Phaser.Scene {
             // Animete only mined tx
             if(res.data.height > 0) {
               const npc_tweens = this.tweens.getTweensOf(npc);
-              if(npc_tweens[0]) npc_tweens[0].destroy();
+              if(npc_tweens[0]) {
+                npc_tweens[0].stop();
+                npc_tweens[0].destroy();
+              }
       
               const startX = this.map.worldToTileX(npc.x);
               const startY = this.map.worldToTileY(npc.y);
@@ -220,7 +233,7 @@ class MainScene extends Phaser.Scene {
               let posx = 6;
               let posy = 11;
       
-              if(startX > 12 && start <= 21) posx = 18;
+              if(startX > 12 && startX <= 21) posx = 18;
               else if(startX > 21 && startX <= 30) posx = 25;
               else if(startX > 30) posx = 37;
       
@@ -231,6 +244,8 @@ class MainScene extends Phaser.Scene {
               this.events.once('done', () => {
                 // console.log('done, sending train away')               
                 if(!trainDeparted && !this.blured) {
+                  // const train_tweens = this.tweens.getTweensOf(this.train);
+                  // if(train_tweens[0]) train_tweens[0].destroy();
                   this.train.depart();
                   trainDeparted = true;
                 }
@@ -244,9 +259,10 @@ class MainScene extends Phaser.Scene {
             }           
           });
 
-          // The train should leave even if it's empty   
-          // const train_tweens = this.tweens.getTweensOf(this.train);          
+          // The train should leave even if it's empty             
           if(!trainDeparted && !this.blured) {
+            // const train_tweens = this.tweens.getTweensOf(this.train);
+            // if(train_tweens[0]) train_tweens[0].destroy();
             this.train.depart();
             trainDeparted = true;
           }          
