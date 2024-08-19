@@ -116,25 +116,25 @@ class MainScene extends Phaser.Scene {
     // When tabs are switched, try to keed txns in sync
     this.game.events.on('blur', () => {      
       this.blured = true;
-      const train_tweens = this.tweens.getTweensOf(this.train);
-      if(train_tweens[0] && train_tweens[0].isPlaying()) {
-        // train_tweens[0].stop();
-        // this.train.arrive();
-      }
+      // const train_tweens = this.tweens.getTweensOf(this.train);
+      // if(train_tweens[0] && train_tweens[0].isPlaying()) {
+      //   // train_tweens[0].stop();
+      //   // this.train.arrive();
+      // }
 
-      this.npcs.forEach(async (npc) => {  
-        const npc_tweens = this.tweens.getTweensOf(npc);
-        if(npc_tweens[0] && npc_tweens[0].isPlaying()) {
-          npc_tweens[0].pause();
-        }
-      });
+      // this.npcs.forEach(async (npc) => {  
+      //   const npc_tweens = this.tweens.getTweensOf(npc);
+      //   if(npc_tweens[0] && npc_tweens[0].isPlaying()) {
+      //     // npc_tweens[0].pause();
+      //   }
+      // });
     }, this);
         
     this.game.events.on('focus', () => {      
       if(this.blured) {
         this.blured = false;
 
-        this.dataLock = true;
+        // this.dataLock = true;
         
         console.log("When focus is back to this tab, remove already mined txns ...")        
         this.npcs.forEach(async (npc) => {  
@@ -152,17 +152,17 @@ class MainScene extends Phaser.Scene {
             this.npcs.splice(this.npcs.indexOf(npc), 1);
           }
           else {
-            if(npc_tweens[0]) npc_tweens[0].resume();
+            // if(npc_tweens[0]) npc_tweens[0].resume();
           }
         });        
-        this.dataLock = false;
+        // this.dataLock = false;
       }
     }, this);
   }
 
   async update(time, delta) {
     // Update your scene here
-    if(time - this.lastTime >= this.timeInterval && !this.blured) {
+    if(time - this.lastTime >= this.timeInterval) {
       this.lastTime = time;
       if(this.dataLock) {
         console.log("Already processing ...")
@@ -195,7 +195,15 @@ class MainScene extends Phaser.Scene {
                 const npc = new NPC(this, tx, this.map.tileToWorldX(spawnx), this.map.tileToWorldY(spawny), this.scaleFactor);            
                 // this.physics.add.collider(this.npcs, layer);
                 this.npcs.push(npc);
-                npc.moveAlongPath(path, false);           
+                
+                // If tab is in focus, animate NPC, else spawn in target position
+                if(!this.blured) {
+                  npc.moveAlongPath(path, false);           
+                }
+                else {
+                  npc.setX(posx * 12 * this.scaleFactor);
+                  npc.setY(posy * 12 * this.scaleFactor);
+                }
               }
             // },300);
           }
@@ -221,7 +229,7 @@ class MainScene extends Phaser.Scene {
             // Animete only mined tx
             if(res.data.height > 0) {
               const npc_tweens = this.tweens.getTweensOf(npc);
-              if(npc_tweens[0]) {
+              if(npc_tweens[0] && npc_tweens[0].isPlaying()) {
                 npc_tweens[0].stop();
                 npc_tweens[0].destroy();
               }
