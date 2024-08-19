@@ -136,25 +136,25 @@ class MainScene extends Phaser.Scene {
 
         // this.dataLock = true;
         
-        console.log("When focus is back to this tab, remove already mined txns ...")        
-        this.npcs.forEach(async (npc) => {  
-          const npc_tweens = this.tweens.getTweensOf(npc);
+        // console.log("When focus is back to this tab, remove already mined txns ...")        
+        // this.npcs.forEach(async (npc) => {  
+        //   const npc_tweens = this.tweens.getTweensOf(npc);
 
-          const res = await http.get(`/txinfo/?txid=${npc.txid}`);
+        //   const res = await http.get(`/txinfo/?txid=${npc.txid}`);
   
-          if(res.data.height > 0 || res.data.error) {            
-            if(npc_tweens[0] && npc_tweens[0].isPlaying()) {
-              // npc_tweens[0].stop();
-              npc_tweens[0].destroy();
-            }
-            npc.tooltip.destroy();
-            npc.destroy();            
-            this.npcs.splice(this.npcs.indexOf(npc), 1);
-          }
-          else {
-            // if(npc_tweens[0]) npc_tweens[0].resume();
-          }
-        });        
+        //   if(res.data.height > 0 || res.data.error) {            
+        //     if(npc_tweens[0] && npc_tweens[0].isPlaying()) {
+        //       // npc_tweens[0].stop();
+        //       npc_tweens[0].destroy();
+        //     }
+        //     npc.tooltip.destroy();
+        //     npc.destroy();            
+        //     this.npcs.splice(this.npcs.indexOf(npc), 1);
+        //   }
+        //   else {
+        //     // if(npc_tweens[0]) npc_tweens[0].resume();
+        //   }
+        // });        
         // this.dataLock = false;
       }
     }, this);
@@ -227,13 +227,7 @@ class MainScene extends Phaser.Scene {
             const res = await http.get(`/txinfo/?txid=${npc.txid}`);
             
             // Animete only mined tx
-            if(res.data.height > 0) {
-              const npc_tweens = this.tweens.getTweensOf(npc);
-              if(npc_tweens[0] && npc_tweens[0].isPlaying()) {
-                npc_tweens[0].stop();
-                npc_tweens[0].destroy();
-              }
-      
+            if(res.data.height > 0) {     
               const startX = this.map.worldToTileX(npc.x);
               const startY = this.map.worldToTileY(npc.y);
               const start = this.grid[startY][startX];
@@ -247,19 +241,32 @@ class MainScene extends Phaser.Scene {
       
               const goal = this.grid[posy][posx];
               const path_to_train = bfs(start, goal, this.grid);
-              npc.moveAlongPath(path_to_train, true);
+              
+              // Stop any current NPC animation
+              const npc_tweens = this.tweens.getTweensOf(npc);
+              if(npc_tweens[0] && npc_tweens[0].isPlaying()) {
+                npc_tweens[0].stop();
+                npc_tweens[0].destroy();
+              }
+
+              // If tab is in focus animate NPC to the train, else just remove it from scene
+              if(!this.blured) {
+                npc.moveAlongPath(path_to_train, true);
+              }
+              else {
+                npc.tooltip.destroy();
+                npc.destroy(); 
+              }
+
+              this.npcs.splice(this.npcs.indexOf(npc), 1);
 
               this.events.once('done', () => {
                 // console.log('done, sending train away')               
                 if(!trainDeparted && !this.blured) {
-                  // const train_tweens = this.tweens.getTweensOf(this.train);
-                  // if(train_tweens[0]) train_tweens[0].destroy();
                   this.train.depart();
                   trainDeparted = true;
                 }
               });
-      
-              this.npcs.splice(this.npcs.indexOf(npc), 1);
             }            
             // If not mined yet, keep the tx
             else {
@@ -269,8 +276,6 @@ class MainScene extends Phaser.Scene {
 
           // The train should leave even if it's empty             
           if(!trainDeparted && !this.blured) {
-            // const train_tweens = this.tweens.getTweensOf(this.train);
-            // if(train_tweens[0]) train_tweens[0].destroy();
             this.train.depart();
             trainDeparted = true;
           }          
