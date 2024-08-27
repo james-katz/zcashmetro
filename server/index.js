@@ -20,6 +20,8 @@ const PORT = process.env.PORT || 3000;
 // Initialize the gRPC connector
 const client = grpc.init('na-ewr.zec.rocks:443');  
 
+// const client = grpc.init('lwd1.zcash-infra.com:9067');
+
 console.log(native.hello());
 
 let mempoolTx = [];
