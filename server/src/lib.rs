@@ -1,6 +1,6 @@
 use neon::prelude::*;
 use zcash_primitives::transaction::Transaction;
-use zcash_primitives::consensus::BranchId;
+use zcash_primitives::consensus::{BranchId, MainNetwork, BlockHeight};
 use hex::decode;
 use serde::Serialize;
 // use serde_json::;
@@ -20,16 +20,18 @@ struct TransactionData {
     n_orchard_action: Option<usize>,
 }
 
-pub fn get_transaction_data(txdata: &str) -> Result<Transaction, Box<dyn std::error::Error>> {
+pub fn get_transaction_data(txdata: &str, height: &str) -> Result<Transaction, Box<dyn std::error::Error>> {
     let tx_bytes = decode(txdata)?;
-    let transaction = Transaction::read(&tx_bytes[..], BranchId::Nu5)?;
+    let height_u32: u32 = height.parse().unwrap();
+    let transaction = Transaction::read(&tx_bytes[..], BranchId::for_height(&MainNetwork, BlockHeight::from_u32(height_u32)))?;
     // println!("{:?}", transaction);
     Ok(transaction)
 }
 
 fn get_transaction_data_js(mut cx: FunctionContext) -> JsResult<JsString> {
     let txdata = cx.argument::<JsString>(0)?.value(&mut cx);
-    match get_transaction_data(&txdata) {
+    let height = cx.argument::<JsString>(1)?.value(&mut cx);
+    match get_transaction_data(&txdata, &height) {
         Ok(transaction) => {
             // Serialize transaction to JSON
 
