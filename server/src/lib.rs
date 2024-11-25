@@ -22,7 +22,8 @@ struct TransactionData {
 
 pub fn get_transaction_data(txdata: &str, height: &str) -> Result<Transaction, Box<dyn std::error::Error>> {
     let tx_bytes = decode(txdata)?;
-    let height_u32: u32 = height.parse().unwrap();
+    let height_u32: u32 = height.parse().unwrap_or(2726400);
+    println!("{}", height_u32);
     let transaction = Transaction::read(&tx_bytes[..], BranchId::for_height(&MainNetwork, BlockHeight::from_u32(height_u32)))?;
     // println!("{:?}", transaction);
     Ok(transaction)
@@ -44,8 +45,8 @@ fn get_transaction_data_js(mut cx: FunctionContext) -> JsResult<JsString> {
 
             // Sapling spends / outputs
             let z_bundle = transaction.sapling_bundle();
-            let z_spends = z_bundle.map(|z| z.shielded_spends.clone());
-            let z_outputs = z_bundle.map(|z| z.shielded_outputs.clone());
+            let z_spends = z_bundle.map(|z| z.shielded_spends());
+            let z_outputs = z_bundle.map(|z| z.shielded_outputs());
             let z_spend_count = z_spends.map(|z| z.len());
             let z_output_count = z_outputs.map(|z| z.len());
 

@@ -21,8 +21,8 @@ const compactTxStreamer = grpc.loadPackageDefinition(packageDefinition).cash.z.w
 // const eventEmitter = new EventEmitter();
 
 function init(serverUri) {
-    // let options = { 'grpc.max_receive_message_length': 1752460652};
-    const options = {};
+    let options = { 'grpc.max_receive_message_length': 1752460652};
+    // const options = {};
     return client = new compactTxStreamer(serverUri, grpc.credentials.createSsl(), options);
 }
 

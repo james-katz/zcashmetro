@@ -19,15 +19,15 @@ const PORT = process.env.PORT || 3000;
 
 // Initialize the gRPC connector
 // const client = grpc.init('na-ewr.zec.rocks:443');  
-const client = grpc.init('zcashd.zec.rocks:443');  
+// const client = grpc.init('zcashd.zec.rocks:443');  
 
-// const client = grpc.init('lwd1.zcash-infra.com:9067');
+const client = grpc.init('lwd1.zcash-infra.com:9067');
 
 console.log(native.hello());
 
 let mempoolTx = [];
 let dbLock = false;
-let latestHeight = 0;
+let latestHeight = 2726400;
 
 async function addTxToDatabase(tx) {
   dbLock = true;
@@ -165,7 +165,8 @@ async function listenForMempool() {
   let txListener = grpc.getMempoolStream(client);
 
   txListener.on('newtx', async(tx) => {        
-    const txdata = native.getTransactionData(Buffer.from(tx.data, 'hex').toString('hex'), latestHeight.toString());
+    
+    const txdata = native.getTransactionData(Buffer.from(tx.data, 'hex').toString('hex'), tx.height);
     const txjson = JSON.parse(txdata);
     
     const newtx = {
