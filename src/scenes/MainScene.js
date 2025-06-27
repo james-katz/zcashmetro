@@ -113,7 +113,7 @@ class MainScene extends Phaser.Scene {
     
     this.enableCameraScrolling();
 
-    // When tabs are switched, try to keed txns in sync
+    // When tabs are switched, try to keep txns in sync
     this.game.events.on('blur', () => {      
       this.blured = true;
       // const train_tweens = this.tweens.getTweensOf(this.train);
@@ -163,6 +163,7 @@ class MainScene extends Phaser.Scene {
   async update(time, delta) {
     // Update your scene here
     if(time - this.lastTime >= this.timeInterval) {
+      
       this.lastTime = time;
       if(this.dataLock) {
         console.log("Already processing ...")
@@ -174,10 +175,11 @@ class MainScene extends Phaser.Scene {
       let mempool;
 
       await http.get('/mempool').then((res) => {
+        
         mempool = res.data
-        mempool.forEach(async (tx) => {
+        mempool.forEach(async (tx) => {          
           if(this.npcs.filter((npc) => npc.txid == tx.txid).length == 0) {
-            // console.log(tx.txid);
+            console.log("Spawn new NPC:", tx.txid);
 
             const spawnx = 22;
             const spawny = 62;      
@@ -190,8 +192,9 @@ class MainScene extends Phaser.Scene {
             // Add NPCs in a timeout, to avoid creating each new npc at once.
             // setTimeout(async () => {
               // Double check if tx is in mempool
-              const res = await http.get(`/txinfo/?txid=${tx.txid}`);
-              if(res.data.height < 0 && !res.data.error) {
+              const res = await http.get(`/txinfo/?txid=${tx.txid}`); 
+              // console.log("Tx mined in height: ", res.data);       
+              if(res.data.height <= 0 && !res.data.error) {
                 const npc = new NPC(this, tx, this.map.tileToWorldX(spawnx), this.map.tileToWorldY(spawny), this.scaleFactor);            
                 // this.physics.add.collider(this.npcs, layer);
                 this.npcs.push(npc);
@@ -206,7 +209,7 @@ class MainScene extends Phaser.Scene {
                 }
               }
             // },300);
-          }
+          }          
         });        
 
         this.mempoolSign.updateText(`In mempool\n${this.npcs.length}`)

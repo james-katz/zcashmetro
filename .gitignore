@@ -1,5 +1,9 @@
 target
 index.node
+
+./server/test_gettx.js
+./server/test.js
+
 **/node_modules
 **/.DS_Store
 npm-debug.log*

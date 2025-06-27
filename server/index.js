@@ -18,8 +18,6 @@ app.use(cors()) // to allow cross origin requests
 const PORT = process.env.PORT || 3000;
 
 // Initialize the gRPC connector
-// const client = grpc.init('na-ewr.zec.rocks:443');  
-// const client = grpc.init('zcashd.zec.rocks:443');  
 
 const client = grpc.init('lwd1.zcash-infra.com:9067');
 
@@ -87,6 +85,7 @@ app.get('/txinfo', async (req, res) => {
 
     const tx = await grpc.getTransaction(client, txid);
     // Workaround to work with uint64. -1 means a tx that wasn't minet yet
+    console.log("tx is mined in height:", tx.height)
     if((tx.height - (2**64-1) - 1) != -1) {
       res.json({height: tx.height})        
     }
@@ -228,5 +227,16 @@ async function listenForMempool() {
       listenForMempool();
     }, 1000);
     
+  });
+
+  txListener.on('error', (e) => {
+    console.log(`Stream closed with error ${e}`);
+    txListener = undefined;
+    dbLock = false;
+    
+    // Wait 5 sec before opening a new stream, just in case.
+    setTimeout(() => {
+      listenForMempool();
+    }, 5 * 1000);
   });
 }
