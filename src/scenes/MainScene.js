@@ -132,11 +132,11 @@ class MainScene extends Phaser.Scene {
         
     this.game.events.on('focus', () => {      
       if(this.blured) {
-        this.blured = false;
+        // this.blured = false;
 
         // this.dataLock = true;
         
-        // console.log("When focus is back to this tab, remove already mined txns ...")        
+        // // console.log("When focus is back to this tab, remove already mined txns ...")        
         // this.npcs.forEach(async (npc) => {  
         //   const npc_tweens = this.tweens.getTweensOf(npc);
 
@@ -174,10 +174,9 @@ class MainScene extends Phaser.Scene {
 
       let mempool;
 
-      await http.get('/mempool').then((res) => {
-        
-        mempool = res.data
-        mempool.forEach(async (tx) => {          
+      http.get('/mempool').then(async (res) => {        
+        mempool = res.data;
+        for(const tx of mempool) {          
           if(this.npcs.filter((npc) => npc.txid == tx.txid).length == 0) {
             // console.log("Spawn new NPC:", tx.txid);
 
@@ -218,7 +217,7 @@ class MainScene extends Phaser.Scene {
               // Double check if tx is in mempool
               const res = await http.get(`/txinfo/?txid=${tx.txid}`); 
               // console.log("Tx mined in height: ", res.data);       
-              if(res.data.height <= 0 && !res.data.error) {
+              if(res.data.height < 0 && !res.data.error) {
                 const npc = new NPC(this, tx, this.map.tileToWorldX(spawnx), this.map.tileToWorldY(spawny), this.scaleFactor);            
                 // this.physics.add.collider(this.npcs, layer);
                 this.npcs.push(npc);
@@ -234,7 +233,7 @@ class MainScene extends Phaser.Scene {
               }
             // },300);
           }          
-        });        
+        };        
 
         this.mempoolSign.updateText(`In mempool\n${this.npcs.length}`)
       });             
@@ -284,6 +283,7 @@ class MainScene extends Phaser.Scene {
                 npc.moveAlongPath(path_to_train, true);
               }
               else {
+                minedTxns --;
                 npc.tooltip.destroy();
                 npc.destroy(); 
               }

@@ -57,11 +57,13 @@ async function addTxToDatabase(tx) {
       }
   }
 
-  const rec = await sequelize.models.transaction.create( {
-    id: tx.txid,
-    type: txtype,      
+  const [_rec, created] = await sequelize.models.transaction.findOrCreate({
+    where: { id: tx.txid },
+    defaults: {
+      type: txtype,
+    },
   });
-  if(rec instanceof sequelize.models.transaction) {
+  if(created) {
     console.log(`Added ${tx.txid}`);
   }
   dbLock = false;
@@ -84,9 +86,8 @@ app.get('/txinfo', async (req, res) => {
     if(!txid) throw("txid is undefined");
 
     const tx = await grpc.getTransaction(client, txid);
-    // Workaround to work with uint64. -1 means a tx that wasn't minet yet
-    console.log("tx is mined in height:", tx.height)
-    if((tx.height - (2**64-1) - 1) != -1) {
+    // console.log("tx is mined in height:", tx.height)
+    if(tx.height > 0) {
       res.json({height: tx.height})        
     }
     else {
