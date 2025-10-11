@@ -56,16 +56,19 @@ async function addTxToDatabase(tx) {
           txtype = "o2o";
       }
   }
-
-  const [_rec, created] = await sequelize.models.transaction.findOrCreate({
-    where: { id: tx.txid },
-    defaults: {
+  try {
+    const rec = await sequelize.models.transaction.create({
+      id: tx.txid,
       type: txtype,
-    },
-  });
-  if(created) {
-    console.log(`Added ${tx.txid}`);
+    });
+    if(rec) {
+      console.log(`Added ${tx.txid}`);
+    }
   }
+  catch(e) {
+    console.log("Unable to add tx");
+  }
+  
   dbLock = false;
 }
 
@@ -180,7 +183,7 @@ async function listenForMempool() {
     };
     // console.log(newtx);
 
-    if(mempoolTx.filter((t) => t.txid == newtx.txid).length == 0) {
+    if(mempoolTx.filter(async (t) => t.txid == newtx.txid).length == 0) {
       await addTxToDatabase(newtx);
       mempoolTx.push(newtx);
     }
