@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 3000;
 
 // Initialize the gRPC connector
 
-const client = grpc.init('zaino.unsafe.zec.rocks:443');
+const client = grpc.init('zcash.mysideoftheweb.com:9067');
 
 console.log(native.hello());
 
@@ -88,7 +88,7 @@ app.get('/txinfo', async (req, res) => {
     if(!txid) throw("txid is undefined");
 
     const tx = await grpc.getTransaction(client, txid);
-    // console.log("tx is mined in height:", tx.height)
+    console.log("tx is mined in height:", tx.height)
     if(tx.height > 0) {
       res.json({height: tx.height})        
     }
@@ -180,13 +180,14 @@ function listenForMempool() {
       n_orchard_action: txjson.n_orchard_action,
       height: tx.height,
     };
-    // if(mempoolTx.filter(async(t) => t.txid === newtx.txid).length == 0) {
+
+    if(!mempoolTx.some(t => t.txid === newtx.txid)) {
       await addTxToDatabase(newtx);
       mempoolTx.push(newtx);
-    // }
+    }
   });
 
-  txListener.on('closed', async () => {
+  txListener.on('closed', () => {
     console.log("Stream closed.");
     // This block is done, remove mined tx from db
     const TxModel = sequelize.models.transaction;  
@@ -195,11 +196,9 @@ function listenForMempool() {
     // Create a temporary list to hold unimed tx
     const temp = [];
     
-    for(const tx of mempoolTx) {
+    mempoolTx.forEach(async(tx) => {
       try {
         const t = await grpc.getTransaction(client, tx.txid);
-        // Workaround to work with uint64. -1 means a tx that wasn't minet yet
-        // if((t.height - (2**64-1) - 1) != -1) {
         if(t.height > 0) {
           console.log(`${tx.txid} mined, removing it from db ...`);
           await TxModel.destroy({where: {id: tx.txid}});          
@@ -218,7 +217,7 @@ function listenForMempool() {
           console.log("tx is undefined");
         }
       }
-    }
+    });
 
     mempoolTx = temp;
     txListener = undefined;

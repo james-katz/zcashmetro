@@ -132,7 +132,7 @@ class MainScene extends Phaser.Scene {
         
     this.game.events.on('focus', () => {      
       if(this.blured) {
-        // this.blured = false;
+        this.blured = false;
 
         // this.dataLock = true;
         
@@ -172,10 +172,11 @@ class MainScene extends Phaser.Scene {
       
       this.dataLock = true;
 
-      let mempool;
+      // let mempool;
 
       http.get('/mempool').then(async (res) => {        
-        mempool = res.data;
+        const mempool = res.data;
+        
         for(const tx of mempool) {          
           if(this.npcs.filter((npc) => npc.txid == tx.txid).length == 0) {
             // console.log("Spawn new NPC:", tx.txid);
@@ -217,7 +218,7 @@ class MainScene extends Phaser.Scene {
               // Double check if tx is in mempool
               const res = await http.get(`/txinfo/?txid=${tx.txid}`); 
               // console.log("Tx mined in height: ", res.data);       
-              if(res.data.height < 0 && !res.data.error) {
+              if((res.data.height < 0) && !res.data.error) {
                 const npc = new NPC(this, tx, this.map.tileToWorldX(spawnx), this.map.tileToWorldY(spawny), this.scaleFactor);            
                 // this.physics.add.collider(this.npcs, layer);
                 this.npcs.push(npc);
@@ -250,13 +251,14 @@ class MainScene extends Phaser.Scene {
           let trainDeparted = false;
           let minedTxns = 0;
 
-          // this.npcs.forEach(async (npc) => {  
-          for(const npc of this.npcs) {
+          for(const npc of [...this.npcs]) {
             const res = await http.get(`/txinfo/?txid=${npc.txid}`);
             
             // Animete only mined tx
-            if(res.data.height > 0) {   
+            if(res.data.height > 0) {  
               minedTxns ++;  
+              console.log(minedTxns)
+ 
               const startX = this.map.worldToTileX(npc.x);
               const startY = this.map.worldToTileY(npc.y);
               const start = this.grid[startY][startX];
@@ -283,7 +285,7 @@ class MainScene extends Phaser.Scene {
                 npc.moveAlongPath(path_to_train, true);
               }
               else {
-                minedTxns --;
+                minedTxns--;
                 npc.tooltip.destroy();
                 npc.destroy(); 
               }
@@ -298,7 +300,6 @@ class MainScene extends Phaser.Scene {
             else {
               // console.log(`Keeping ${npc.txid}`);
             }           
-          // });
           }
 
           if(minedTxns <= 0) {
