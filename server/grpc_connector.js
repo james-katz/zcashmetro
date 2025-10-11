@@ -72,6 +72,32 @@ function getTransaction(client, filter) {
     }); 
 }
 
+function getMempoolTx(client, exclude) {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const txns = [];
+            const call =  client.GetMempoolTx({});
+
+            call.on('data', (tx) => {
+                txns.push(tx);
+            });
+
+            call.on('end', () => {                
+                resolve(txns);
+            });
+
+            call.on('error', (err) => {
+                reject(err);
+            });    
+            
+        }
+        catch(err){
+            console.log("getMempoolTx error", err);
+            reject(err);
+        }
+    });       
+}
+
 function getMempoolStream(client) {
      // const txns = [];
     const emitter = new EventEmitter();
@@ -92,10 +118,27 @@ function getMempoolStream(client) {
     return emitter;
 }
 
+function getLightdInfo(client) {
+    return new Promise((resolve, reject) => {        
+        try {
+            client.getLightdInfo({}, (err, res) => {
+                if(err) reject(err);            
+                resolve(res);
+            });
+        }
+        catch(err) {
+            console.log("getLightdInfo error", err)
+            reject(err);
+        }
+    });       
+}
+
 module.exports = { 
     init,
     getLatestBlock,
     getBlock,
     getTransaction,
-    getMempoolStream
+    getMempoolTx,
+    getMempoolStream,
+    getLightdInfo
 }

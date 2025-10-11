@@ -29,7 +29,7 @@ class Train extends Phaser.Physics.Arcade.Sprite {
         duration: 2000,   
         repeat: false,
         loop: false,
-        delay: 1500
+        delay: 80
       }
     ],
     onComplete: () => {

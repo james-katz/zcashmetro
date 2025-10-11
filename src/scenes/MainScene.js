@@ -101,7 +101,7 @@ class MainScene extends Phaser.Scene {
     for(const tx of this.npcData) {
       // console.log(tx)
       let posx = (2+Math.random()*41) * this.map.tileWidth * this.scaleFactor;
-      let posy = (19 + Math.random()*8) * this.map.tileHeight * this.scaleFactor;
+      let posy = (16 + Math.random()*8) * this.map.tileHeight * this.scaleFactor;
       const npc = new NPC(this, tx, posx, posy, this.scaleFactor);
       this.npcs.push(npc);
       this.physics.add.collider(this.npcs, layer);
@@ -179,18 +179,42 @@ class MainScene extends Phaser.Scene {
         mempool = res.data
         mempool.forEach(async (tx) => {          
           if(this.npcs.filter((npc) => npc.txid == tx.txid).length == 0) {
-            console.log("Spawn new NPC:", tx.txid);
+            // console.log("Spawn new NPC:", tx.txid);
 
             const spawnx = 22;
             const spawny = 62;      
             const start = this.grid[spawny][spawnx];
+            
             let posx = parseInt(Math.random()*44);
-            let posy = parseInt(Math.random()*6) + 20;
+            let posy = parseInt(Math.random()*12) + 16;
+
+            for(let attempt = 0; attempt < 10; attempt ++) {                            
+              const tx = Math.floor(Math.random() * 45);
+              const ty = Math.floor(Math.random() * (27 - 16 + 1)) + 16;
+
+              const ok = this.npcs.every(n => {
+                const dx = n.x - this.map.tileToWorldX(tx);
+                const dy = n.y - this.map.tileToWorldY(ty);
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist >= 32) {                  
+                  return true;
+                } else {
+                  return false;
+                }
+              });
+
+              if(ok) {                
+                posx = tx;
+                posy = ty;
+                break;
+              } 
+            }
+            
             const goal = this.grid[posy][posx];
             const path = bfs(start, goal, this.grid);
             
             // Add NPCs in a timeout, to avoid creating each new npc at once.
-            // setTimeout(async () => {
+            setTimeout(async () => {
               // Double check if tx is in mempool
               const res = await http.get(`/txinfo/?txid=${tx.txid}`); 
               // console.log("Tx mined in height: ", res.data);       
@@ -208,29 +232,32 @@ class MainScene extends Phaser.Scene {
                   npc.setY(posy * 12 * this.scaleFactor);
                 }
               }
-            // },300);
+            },300);
           }          
         });        
 
         this.mempoolSign.updateText(`In mempool\n${this.npcs.length}`)
-      });        
+      });             
 
       await http.get('/latestblock').then(async (res) => {
         if(res.data.height > this.currHeight) {
           this.currHeight = res.data.height;
-          console.log(this.currHeight)
+          // console.log(this.currHeight)
           this.heightSign.updateText(`Current height\n${this.currHeight}`);
           
           // Keep any unmied tx and send the rest to the train
           // mempool = await http.get('/mempool');
           
           let trainDeparted = false;
+          let minedTxns = 0;
 
-          this.npcs.forEach(async (npc) => {  
+          // this.npcs.forEach(async (npc) => {  
+          for(const npc of this.npcs) {
             const res = await http.get(`/txinfo/?txid=${npc.txid}`);
             
             // Animete only mined tx
-            if(res.data.height > 0) {     
+            if(res.data.height > 0) {   
+              minedTxns ++;  
               const startX = this.map.worldToTileX(npc.x);
               const startY = this.map.worldToTileY(npc.y);
               const start = this.grid[startY][startX];
@@ -264,24 +291,30 @@ class MainScene extends Phaser.Scene {
               this.npcs.splice(this.npcs.indexOf(npc), 1);
 
               this.events.once('done', () => {
-                // console.log('done, sending train away')               
-                if(!trainDeparted && !this.blured) {
-                  this.train.depart();
-                  trainDeparted = true;
-                }
-              });
+                minedTxns --;                
+              });              
             }            
             // If not mined yet, keep the tx
             else {
-              console.log(`Keeping ${npc.txid}`);
+              // console.log(`Keeping ${npc.txid}`);
             }           
-          });
+          // });
+          }
+
+          if(minedTxns <= 0) {
+            if(!trainDeparted && !this.blured) {
+              console.log("Last one to board. Can send train away now!")
+              this.train.depart();
+              trainDeparted = true;
+            }
+          }
 
           // The train should leave even if it's empty             
-          if(!trainDeparted && !this.blured) {
-            this.train.depart();
-            trainDeparted = true;
-          }          
+          // if(!trainDeparted && !this.blured) {
+          //   console.log("Train leaving empty.")
+          //   this.train.depart();
+          //   trainDeparted = true;
+          // }          
         }
 
         this.dataLock = false;

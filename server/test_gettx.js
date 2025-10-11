@@ -1,43 +1,41 @@
-const native = require('./index.node');
 const grpc = require('./grpc_connector');
+const native = require('./index.node');
 
-const client = grpc.init('lwd1.zcash-infra.com:9067');  
+const urlList = [
+    'lwd1.zcash-infra.com:9067',
+    'zec.rocks:443',
+    'lightwalletd.stakehold.rs:443',
+    'zaino.unsafe.zec.rocks:443',
+    'zcashd.zec.rocks:443',
+]
 
-txid = "4a38e963ebfc7197356ddca5b7d138aeaec384002113d35cbc98311733c29d46";
-grpc.getTransaction(client, txid).then(tx => {
-    // console.log(Buffer.from(tx.data, 'hex'))
-    // console.log(tx.height);
-    
-    const data = native.getTransactionData(Buffer.from(tx.data, 'hex').toString('hex'));
-    dataJson = JSON.parse(data);
+// First, get any tx in the mempool
+const client = grpc.init(urlList[0]);
+const mempool = client.GetMempoolStream({});
 
-    let txtype = "unknown";
-    if (dataJson.n_transparent_vin > 0) {
-        if (dataJson.n_transparent_vout > 0) {
-            txtype = "t2t";
-        } else if (dataJson.n_sapling_output > 0) {
-            txtype = "t2z";
-        } else if (dataJson.n_orchard_action > 0) {
-            txtype = "t2o";
+let unminedTx = '';
+mempool.on('data', async (tx) => {   
+    if(!unminedTx) {
+        unminedTx = tx;
+
+        const txdata = native.getTransactionData(Buffer.from(tx.data, 'hex').toString('hex'), tx.height);
+        const txjson = JSON.parse(txdata);
+        const txid = txjson.txid.replaceAll('"', '');
+
+        console.log(`Found new tx on mempool: ${txid}`);
+
+        for(const url of urlList) {            
+            console.log(`Using ${url} ...`);
+            const lc = grpc.init(url);
+            const info = await grpc.getLightdInfo(lc);
+            console.log(`${info.zcashdSubversion} ${info.version}`);
+            const chainTip = await grpc.getLatestBlock(lc);
+            console.log(`Server latest block: ${chainTip.height}`);
+            
+            const t = await grpc.getTransaction(client, txid);
+            console.log(`getTransaction RPC answer: ${t.height}`);
+            console.log("\n======\n")
         }
-    } else if (dataJson.n_sapling_spend > 0) {
-        if (dataJson.n_transparent_vout > 0) {
-            txtype = "z2t";
-        } else if (dataJson.n_sapling_output > 0) {
-            txtype = "z2z";
-        } else if (dataJson.n_orchard_action > 0) {
-            txtype = "z2o";
-        }
-    } else if (dataJson.n_orchard_action > 0) {
-        if (dataJson.n_transparent_vout > 0) {
-            txtype = "o2t";
-        } else if (dataJson.n_sapling_output > 0) {
-            txtype = "o2z";
-        } else {
-            txtype = "o2o";
-        }
+        return;
     }
-    console.log(dataJson);
-    console.log(txtype)
 });
-
