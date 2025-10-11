@@ -19,13 +19,12 @@ const PORT = process.env.PORT || 3000;
 
 // Initialize the gRPC connector
 
-const client = grpc.init('light.myown.party:443');
+const client = grpc.init('zaino.unsafe.zec.rocks:443');
 
 console.log(native.hello());
 
 let mempoolTx = [];
 let dbLock = false;
-let latestHeight = 2726400;
 
 async function addTxToDatabase(tx) {
   dbLock = true;
@@ -163,7 +162,7 @@ sequelize.authenticate().then(async () => {
   console.error('Unable to connect to the database:', err);
 });
 
-async function listenForMempool() {
+function listenForMempool() {
   console.log("Starting new stream");  
   let txListener = grpc.getMempoolStream(client);
 
@@ -171,7 +170,7 @@ async function listenForMempool() {
     
     const txdata = native.getTransactionData(Buffer.from(tx.data, 'hex').toString('hex'), tx.height);
     const txjson = JSON.parse(txdata);
-    
+
     const newtx = {
       txid: txjson.txid.replaceAll('"', ''),
       n_transparent_vin: txjson.n_transparent_vin,
@@ -181,12 +180,10 @@ async function listenForMempool() {
       n_orchard_action: txjson.n_orchard_action,
       height: tx.height,
     };
-    // console.log(newtx);
-
-    if(mempoolTx.filter(async (t) => t.txid == newtx.txid).length == 0) {
+    // if(mempoolTx.filter(async(t) => t.txid === newtx.txid).length == 0) {
       await addTxToDatabase(newtx);
       mempoolTx.push(newtx);
-    }
+    // }
   });
 
   txListener.on('closed', async () => {
@@ -197,6 +194,7 @@ async function listenForMempool() {
 
     // Create a temporary list to hold unimed tx
     const temp = [];
+    
     for(const tx of mempoolTx) {
       try {
         const t = await grpc.getTransaction(client, tx.txid);
