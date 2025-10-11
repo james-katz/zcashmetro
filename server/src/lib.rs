@@ -23,7 +23,7 @@ struct TransactionData {
 pub fn get_transaction_data(txdata: &str, height: &str) -> Result<Transaction, Box<dyn std::error::Error>> {
     let tx_bytes = decode(txdata)?;
     let height_u32: u32 = height.parse().unwrap_or(2726400);
-    println!("{}", height_u32);
+    // println!("{}", height_u32);
     let transaction = Transaction::read(&tx_bytes[..], BranchId::for_height(&MainNetwork, BlockHeight::from_u32(height_u32)))?;
     // println!("{:?}", transaction);
     Ok(transaction)

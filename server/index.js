@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 3000;
 
 // Initialize the gRPC connector
 
-const client = grpc.init('lwd1.zcash-infra.com:9067');
+const client = grpc.init('light.myown.party:443');
 
 console.log(native.hello());
 
@@ -193,12 +193,12 @@ async function listenForMempool() {
 
     // Create a temporary list to hold unimed tx
     const temp = [];
-    for(tx of mempoolTx) {
+    for(const tx of mempoolTx) {
       try {
         const t = await grpc.getTransaction(client, tx.txid);
-        // console.log(t.height)
         // Workaround to work with uint64. -1 means a tx that wasn't minet yet
-        if((t.height - (2**64-1) - 1) != -1) {
+        // if((t.height - (2**64-1) - 1) != -1) {
+        if(t.height > 0) {
           console.log(`${tx.txid} mined, removing it from db ...`);
           await TxModel.destroy({where: {id: tx.txid}});          
         }
