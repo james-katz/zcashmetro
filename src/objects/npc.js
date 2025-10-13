@@ -71,7 +71,7 @@ class NPC extends Phaser.GameObjects.Container {
   }
 
   // You can add custom methods for the NPC here
-  moveAlongPath(path, rush) {    
+  moveAlongPath(path, rush, onComplete) {    
     const speed = rush ? 20 : 60;
     this.scn.tweens.chain({
       targets: this,
@@ -87,6 +87,9 @@ class NPC extends Phaser.GameObjects.Container {
           this.tooltip.destroy();          
           this.destroy();
           this.scn.events.emit('done');
+
+          // call external callback if provided
+          if (onComplete) onComplete();
         }
       }
     });

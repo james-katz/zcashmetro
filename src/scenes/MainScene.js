@@ -13,6 +13,7 @@ class MainScene extends Phaser.Scene {
     this.lastTime = 0;
     this.timeInterval = 1000;    
     this.bgInterval; 
+    this.turnstile = 0;
   }
 
   init(data) {
@@ -189,8 +190,8 @@ class MainScene extends Phaser.Scene {
             let posy = parseInt(Math.random()*12) + 16;
 
             for(let attempt = 0; attempt < 10; attempt ++) {                            
-              const tx = Math.floor(Math.random() * 45);
-              const ty = Math.floor(Math.random() * (27 - 16 + 1)) + 16;
+              const tx = Math.floor(Math.random() * 44);
+              const ty = Math.floor(Math.random() * 12) + 16;
 
               const ok = this.npcs.every(n => {
                 const dx = n.x - this.map.tileToWorldX(tx);
@@ -214,7 +215,7 @@ class MainScene extends Phaser.Scene {
             const path = bfs(start, goal, this.grid);
             
             // Add NPCs in a timeout, to avoid creating each new npc at once.
-            // setTimeout(async () => {
+            setTimeout(async () => {
               // Double check if tx is in mempool
               const res = await http.get(`/txinfo/?txid=${tx.txid}`); 
               // console.log("Tx mined in height: ", res.data);       
@@ -232,7 +233,7 @@ class MainScene extends Phaser.Scene {
                   npc.setY(posy * 12 * this.scaleFactor);
                 }
               }
-            // },300);
+            },300);
           }          
         };        
 
@@ -249,15 +250,13 @@ class MainScene extends Phaser.Scene {
           // mempool = await http.get('/mempool');
           
           let trainDeparted = false;
-          let minedTxns = 0;
 
           for(const npc of [...this.npcs]) {
             const res = await http.get(`/txinfo/?txid=${npc.txid}`);
             
             // Animete only mined tx
             if(res.data.height > 0) {  
-              minedTxns ++;  
-              console.log(minedTxns)
+              this.turnstile ++;                
  
               const startX = this.map.worldToTileX(npc.x);
               const startY = this.map.worldToTileY(npc.y);
@@ -282,19 +281,36 @@ class MainScene extends Phaser.Scene {
 
               // If tab is in focus animate NPC to the train, else just remove it from scene
               if(!this.blured) {
-                npc.moveAlongPath(path_to_train, true);
+                npc.moveAlongPath(path_to_train, true, () => {
+                  this.turnstile --;   
+                  if(this.turnstile <= 0) {
+                    if(!trainDeparted && !this.blured) {
+                      console.log("Last one to board. Can send train away now!")
+                      this.train.depart();
+                      trainDeparted = true;
+                      this.turnstile = 0;
+                    }
+                  } 
+                });
               }
               else {
-                minedTxns--;
+                this.turnstile --;
                 npc.tooltip.destroy();
                 npc.destroy(); 
               }
 
               this.npcs.splice(this.npcs.indexOf(npc), 1);
 
-              this.events.once('done', () => {
-                minedTxns --;                
-              });              
+              // this.events.once('done', () => {
+              //   minedTxns --;   
+              //   if(minedTxns <= 0) {
+              //     if(!trainDeparted && !this.blured) {
+              //       console.log("Last one to board. Can send train away now!")
+              //       this.train.depart();
+              //       trainDeparted = true;
+              //     }
+              //   }             
+              // });              
             }            
             // If not mined yet, keep the tx
             else {
@@ -302,11 +318,12 @@ class MainScene extends Phaser.Scene {
             }           
           }
 
-          if(minedTxns <= 0) {
+          if(this.turnstile == 0) {
             if(!trainDeparted && !this.blured) {
-              console.log("Last one to board. Can send train away now!")
+              console.log("Train leaving with no passengers!")
               this.train.depart();
               trainDeparted = true;
+              this.turnstile = 0;
             }
           }
 
