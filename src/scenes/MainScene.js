@@ -215,7 +215,7 @@ class MainScene extends Phaser.Scene {
             const path = bfs(start, goal, this.grid);
             
             // Add NPCs in a timeout, to avoid creating each new npc at once.
-            setTimeout(async () => {
+            // setTimeout(async () => {
               // Double check if tx is in mempool
               const res = await http.get(`/txinfo/?txid=${tx.txid}`); 
               // console.log("Tx mined in height: ", res.data);       
@@ -233,7 +233,7 @@ class MainScene extends Phaser.Scene {
                   npc.setY(posy * 12 * this.scaleFactor);
                 }
               }
-            },300);
+            // },300);
           }          
         };        
 
@@ -294,7 +294,7 @@ class MainScene extends Phaser.Scene {
                 });
               }
               else {
-                this.turnstile --;
+                this.turnstile = 0;
                 npc.tooltip.destroy();
                 npc.destroy(); 
               }
