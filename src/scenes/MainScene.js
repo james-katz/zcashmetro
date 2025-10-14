@@ -19,7 +19,7 @@ class MainScene extends Phaser.Scene {
   init(data) {
     this.npcData = data.npcData; // Receive the data from LoadingScene
     this.currHeight = data.block.height;
-    // console.log(data.block)
+    // console.log(data.block)    
   }
 
   preload() {
@@ -104,8 +104,9 @@ class MainScene extends Phaser.Scene {
       let posx = (2+Math.random()*41) * this.map.tileWidth * this.scaleFactor;
       let posy = (16 + Math.random()*8) * this.map.tileHeight * this.scaleFactor;
       const npc = new NPC(this, tx, posx, posy, this.scaleFactor);
+      npc.canWander = true;
       this.npcs.push(npc);
-      this.physics.add.collider(this.npcs, layer);
+      // this.physics.add.collider(this.npcs, layer);
     }
 
     // Add sign info
@@ -165,6 +166,36 @@ class MainScene extends Phaser.Scene {
     // Update your scene here
     if(time - this.lastTime >= this.timeInterval) {
       
+      // Trying a cool animation
+      for (const npc of this.npcs) {
+        if (this.blured) break;
+        if(Math.random() < 0.2) continue;
+
+        // wander only every few seconds
+        if (!npc.nextMoveAt) npc.nextMoveAt = time + Phaser.Math.Between(2000, 6000);
+        if (time < npc.nextMoveAt) continue;
+
+        npc.nextMoveAt = time + Phaser.Math.Between(1500, 7000); // schedule next move
+
+        if (!npc.playing && npc.canWander) {
+          const startX = this.map.worldToTileX(npc.x);
+          const startY = this.map.worldToTileY(npc.y);
+
+          // pick a nearby tile within 2–4 tiles of current position
+          const dx = Phaser.Math.Between(-6, 6);
+          const dy = Phaser.Math.Between(-3, 3);
+
+          const posx = Phaser.Math.Clamp(startX + dx, 1, 44);
+          const posy = Phaser.Math.Clamp(startY + dy, 16, 27);
+
+          const start = this.grid[startY][startX];
+          const goal = this.grid[posy][posx];
+          const path = bfs(start, goal, this.grid);
+
+          npc.moveAlongPath(path, false);
+        }
+      }
+
       this.lastTime = time;
       if(this.dataLock) {
         console.log("Already processing ...")
@@ -173,10 +204,11 @@ class MainScene extends Phaser.Scene {
       
       this.dataLock = true;
 
-      // let mempool;
+      let mempool;
 
       http.get('/mempool').then(async (res) => {        
-        const mempool = res.data;
+        // const mempool = res.data;
+        mempool = res.data;
         
         for(const tx of mempool) {          
           if(this.npcs.filter((npc) => npc.txid == tx.txid).length == 0) {
@@ -220,34 +252,35 @@ class MainScene extends Phaser.Scene {
               const res = await http.get(`/txinfo/?txid=${tx.txid}`); 
               // console.log("Tx mined in height: ", res.data);       
               if((res.data.height < 0) && !res.data.error) {
-                const npc = new NPC(this, tx, this.map.tileToWorldX(spawnx), this.map.tileToWorldY(spawny), this.scaleFactor);            
-                // this.physics.add.collider(this.npcs, layer);
+                const npc = new NPC(this, tx, this.map.tileToWorldX(spawnx), this.map.tileToWorldY(spawny), this.scaleFactor);                            
                 this.npcs.push(npc);
                 
                 // If tab is in focus, animate NPC, else spawn in target position
                 if(!this.blured) {
-                  npc.moveAlongPath(path, false);           
+                  npc.moveAlongPath(path, false);
                 }
                 else {
                   npc.setX(posx * 12 * this.scaleFactor);
                   npc.setY(posy * 12 * this.scaleFactor);
+                  npc.canWander = true;
                 }
               }
             // },300);
           }          
         };        
-
+        
         this.mempoolSign.updateText(`In mempool\n${this.npcs.length}`)
       });             
 
       await http.get('/latestblock').then(async (res) => {
-        if(res.data.height > this.currHeight) {
+        let totalNpcs = this.npcs.length;
+
+        if(res.data.height > this.currHeight || mempool.length < this.npcs.length) {        
           this.currHeight = res.data.height;
           // console.log(this.currHeight)
           this.heightSign.updateText(`Current height\n${this.currHeight}`);
           
-          // Keep any unmied tx and send the rest to the train
-          // mempool = await http.get('/mempool');
+          // Keep any unmied tx and send the rest to the train          
           
           let trainDeparted = false;
 
@@ -283,41 +316,34 @@ class MainScene extends Phaser.Scene {
               if(!this.blured) {
                 npc.moveAlongPath(path_to_train, true, () => {
                   this.turnstile --;   
+                  totalNpcs --;
+                  this.mempoolSign.updateText(`In mempool\n${totalNpcs}`)
+
                   if(this.turnstile <= 0) {
                     if(!trainDeparted && !this.blured) {
                       console.log("Last one to board. Can send train away now!")
                       this.train.depart();
                       trainDeparted = true;
-                      this.turnstile = 0;
+                      this.turnstile = 0;                      
                     }
                   } 
                 });
               }
               else {
-                this.turnstile = 0;
+                this.turnstile --;
                 npc.tooltip.destroy();
                 npc.destroy(); 
               }
 
-              this.npcs.splice(this.npcs.indexOf(npc), 1);
-
-              // this.events.once('done', () => {
-              //   minedTxns --;   
-              //   if(minedTxns <= 0) {
-              //     if(!trainDeparted && !this.blured) {
-              //       console.log("Last one to board. Can send train away now!")
-              //       this.train.depart();
-              //       trainDeparted = true;
-              //     }
-              //   }             
-              // });              
+              this.npcs.splice(this.npcs.indexOf(npc), 1);            
             }            
             // If not mined yet, keep the tx
             else {
               // console.log(`Keeping ${npc.txid}`);
             }           
           }
-
+          
+          // The train should leave even if it's empty             
           if(this.turnstile == 0) {
             if(!trainDeparted && !this.blured) {
               console.log("Train leaving with no passengers!")
@@ -325,14 +351,7 @@ class MainScene extends Phaser.Scene {
               trainDeparted = true;
               this.turnstile = 0;
             }
-          }
-
-          // The train should leave even if it's empty             
-          // if(!trainDeparted && !this.blured) {
-          //   console.log("Train leaving empty.")
-          //   this.train.depart();
-          //   trainDeparted = true;
-          // }          
+          }         
         }
 
         this.dataLock = false;

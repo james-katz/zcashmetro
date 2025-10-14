@@ -5,6 +5,9 @@ class NPC extends Phaser.GameObjects.Container {
   constructor(scene, tx, x, y, scl) {
     super(scene, x, y);       
 
+    this.isPlaying = false;
+    this.canWander = false;
+
     this.scn = scene;
     this.scaleFactor = scl;
 
@@ -72,6 +75,9 @@ class NPC extends Phaser.GameObjects.Container {
 
   // You can add custom methods for the NPC here
   moveAlongPath(path, rush, onComplete) {    
+    this.isPlaying = true;
+    this.canWander = false;
+
     const speed = rush ? 20 : 60;
     this.scn.tweens.chain({
       targets: this,
@@ -83,6 +89,9 @@ class NPC extends Phaser.GameObjects.Container {
         duration: speed - Math.random() * 20
       })),
       onComplete: () => {
+        this.isPlaying = false;
+        this.canWander = true;
+
         if(rush) {
           this.tooltip.destroy();          
           this.destroy();
