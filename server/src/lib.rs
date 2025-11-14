@@ -18,6 +18,7 @@ struct TransactionData {
     n_sapling_spend: Option<usize>,
     n_sapling_output: Option<usize>,
     n_orchard_action: Option<usize>,
+    n_expiry_height: Option<usize>
 }
 
 pub fn get_transaction_data(txdata: &str, height: &str) -> Result<Transaction, Box<dyn std::error::Error>> {
@@ -25,7 +26,7 @@ pub fn get_transaction_data(txdata: &str, height: &str) -> Result<Transaction, B
     let height_u32: u32 = height.parse().unwrap_or(2726400);
     // println!("{}", height_u32);
     let transaction = Transaction::read(&tx_bytes[..], BranchId::for_height(&MainNetwork, BlockHeight::from_u32(height_u32)))?;
-    // println!("{:?}", transaction);
+    // println!("{:#?}", transaction);
     Ok(transaction)
 }
 
@@ -55,13 +56,16 @@ fn get_transaction_data_js(mut cx: FunctionContext) -> JsResult<JsString> {
             let o_actions = o_bundle.map(|o| o.actions());
             let o_count = o_actions.map(|a| a.len());
 
+            let expiry_height: u32 = transaction.expiry_height().into();
+
             let tx_json = serde_json::to_string(&TransactionData {
                 txid: format!("{:?}", transaction.txid().to_string()), // txid field
                 n_transparent_vin: Some(t_spend_count).unwrap(),
                 n_transparent_vout: Some(t_output_count).unwrap(),
                 n_sapling_spend: Some(z_spend_count).unwrap(),
                 n_sapling_output: Some(z_output_count).unwrap(),
-                n_orchard_action: Some(o_count).unwrap()
+                n_orchard_action: Some(o_count).unwrap(),
+                n_expiry_height: Some(expiry_height as usize)
             }).unwrap();
             Ok(cx.string(tx_json))
         },

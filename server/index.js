@@ -179,11 +179,14 @@ function listenForMempool() {
       n_sapling_output: txjson.n_sapling_output,
       n_orchard_action: txjson.n_orchard_action,
       height: tx.height,
+      expiry: txjson.n_expiry_height,
     };
 
     if(!mempoolTx.some(t => t.txid === newtx.txid)) {
-      await addTxToDatabase(newtx);
-      mempoolTx.push(newtx);
+      if(newtx.expiry > 0) {
+        await addTxToDatabase(newtx);
+        mempoolTx.push(newtx);
+      }
     }
   });
 
