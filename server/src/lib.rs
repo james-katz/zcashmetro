@@ -21,12 +21,47 @@ struct TransactionData {
     n_expiry_height: Option<usize>
 }
 
+
+/// Returns true if all bytes are printable ASCII (no control chars)
+fn is_printable_ascii(bytes: &[u8]) -> bool {
+    bytes.iter().all(|&b| (b >= 0x20 && b <= 0x7E))
+}
+
+/// Convert hex → ASCII if printable, otherwise None
+fn try_hex_to_ascii(token: &str) -> Option<String> {
+    if token.len() % 2 != 0 {
+        return None;
+    }
+
+    let bytes = hex::decode(token).ok()?;
+
+    if is_printable_ascii(&bytes) {
+        Some(format!("\"{}\"", String::from_utf8_lossy(&bytes)))
+    } else {
+        None
+    }
+}
+
+/// Process the entire string
+fn decode_readable_hex(full: &str) -> String {
+    full.split_whitespace()
+        .map(|token| try_hex_to_ascii(token).unwrap_or_else(|| token.to_string()))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 pub fn get_transaction_data(txdata: &str, height: &str) -> Result<Transaction, Box<dyn std::error::Error>> {
     let tx_bytes = decode(txdata)?;
     let height_u32: u32 = height.parse().unwrap_or(2726400);
     // println!("{}", height_u32);
     let transaction = Transaction::read(&tx_bytes[..], BranchId::for_height(&MainNetwork, BlockHeight::from_u32(height_u32)))?;
     // println!("{:#?}", transaction);
+    // let txin = &transaction.transparent_bundle().as_ref().unwrap().vin[0];
+    // let script_string = txin.script_sig().0.to_string();
+
+    // let asm = decode_readable_hex(&script_string);
+    // println!("{}", asm);
+
     Ok(transaction)
 }
 

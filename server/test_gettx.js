@@ -16,15 +16,16 @@ const mempool = client.GetMempoolStream({});
 
 let unminedTx = '';
 mempool.on('data', async (tx) => {   
-    if(!unminedTx) {
+    // if(!unminedTx) {
         unminedTx = tx;
 
-        const txdata = native.getTransactionData(Buffer.from(tx.data, 'hex').toString('hex'), tx.height);
+        const txdata = await native.getTransactionData(Buffer.from(tx.data, 'hex').toString('hex'), tx.height);
         const txjson = JSON.parse(txdata);
         
         const txid = txjson.txid.replaceAll('"', '');
 
-        console.log(`Found new tx on mempool: ${txid}, expiry: ${txjson.n_expiry_height}`);
+        console.log(`Txid: ${txid}\n`);
+        
 
         // for(const url of urlList) {            
         //     console.log(`Using ${url} ...`);
@@ -34,11 +35,11 @@ mempool.on('data', async (tx) => {
         //     const chainTip = await grpc.getLatestBlock(lc);
         //     console.log(`Server latest block: ${chainTip.height}`);
             
-        //     const t = await grpc.getTransaction(client, txid);
+            // const t = await grpc.getTransaction(client, txid);
         //     console.log(`getTransaction RPC answer: ${t.height}`);
             
         //     console.log("\n======\n")
         // }
         // return;
-    }
+    // }
 });

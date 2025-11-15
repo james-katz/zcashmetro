@@ -13,7 +13,7 @@ class MainScene extends Phaser.Scene {
     this.lastTime = 0;
     this.timeInterval = 1000;    
     this.bgInterval; 
-    this.turnstile = 0;
+    this.turnstile = [];
   }
 
   init(data) {
@@ -273,12 +273,13 @@ class MainScene extends Phaser.Scene {
       });             
 
       await http.get('/latestblock').then(async (res) => {
-        let totalNpcs = this.npcs.length;
+        // let totalNpcs = this.npcs.length;
 
-        if(res.data.height > this.currHeight || mempool.length < this.npcs.length) {        
+        // if(res.data.height > this.currHeight || mempool.length < this.npcs.length) {        
+        if(res.data.height > this.currHeight) {        
           this.currHeight = res.data.height;
           // console.log(this.currHeight)
-          this.heightSign.updateText(`Current height\n${this.currHeight}`);
+          // this.heightSign.updateText(`Current height\n${this.currHeight}`);
           
           // Keep any unmied tx and send the rest to the train          
           
@@ -288,63 +289,69 @@ class MainScene extends Phaser.Scene {
             const res = await http.get(`/txinfo/?txid=${npc.txid}`);
             
             // Animete only mined tx
-            if(res.data.height > 0) {  
-              this.turnstile ++;                
- 
-              const startX = this.map.worldToTileX(npc.x);
-              const startY = this.map.worldToTileY(npc.y);
-              const start = this.grid[startY][startX];
-      
-              let posx = 6;
-              let posy = 11;
-      
-              if(startX > 12 && startX <= 21) posx = 18;
-              else if(startX > 21 && startX <= 30) posx = 25;
-              else if(startX > 30) posx = 37;
-      
-              const goal = this.grid[posy][posx];
-              const path_to_train = bfs(start, goal, this.grid);
-              
-              // Stop any current NPC animation
-              const npc_tweens = this.tweens.getTweensOf(npc);
-              if(npc_tweens[0] && npc_tweens[0].isPlaying()) {
-                npc_tweens[0].stop();
-                npc_tweens[0].destroy();
-              }
-
-              // If tab is in focus animate NPC to the train, else just remove it from scene
-              if(!this.blured) {
-                npc.moveAlongPath(path_to_train, true, () => {
-                  this.turnstile --;   
-                  totalNpcs --;
-                  this.mempoolSign.updateText(`In mempool\n${totalNpcs}`)
-
-                  if(this.turnstile <= 0) {
-                    if(!trainDeparted && !this.blured) {
-                      console.log("Last one to board. Can send train away now!")
-                      this.train.depart();
-                      trainDeparted = true;
-                      this.turnstile = 0;                      
-                    }
-                  } 
-                });
-              }
-              else {
-                this.turnstile --;
-                npc.tooltip.destroy();
-                npc.destroy(); 
-              }
-
-              this.npcs.splice(this.npcs.indexOf(npc), 1);            
+            if(res.data.height > 0) {                              
+              this.turnstile.push(npc);                        
             }            
             // If not mined yet, keep the tx
             else {
-              // console.log(`Keeping ${npc.txid}`);
+              console.log(`Keeping ${npc.txid}`);
             }           
           }
-          
+
+          for(const npc of [...this.turnstile]) {
+            npc.canWander = false;
+            const startX = this.map.worldToTileX(npc.x);
+            const startY = this.map.worldToTileY(npc.y);
+            const start = this.grid[startY][startX];
+      
+            let posx = 6;
+            let posy = 11;
+      
+            if(startX > 12 && startX <= 21) posx = 18;
+            else if(startX > 21 && startX <= 30) posx = 25;
+            else if(startX > 30) posx = 37;
+      
+            const goal = this.grid[posy][posx];
+            const path_to_train = bfs(start, goal, this.grid);
+              
+            // Stop any current NPC animation
+            const npc_tweens = this.tweens.getTweensOf(npc);
+            if(npc_tweens[0] && npc_tweens[0].isPlaying()) {
+              npc_tweens[0].stop();
+              npc_tweens[0].destroy();
+            }
+              
+            // If tab is in focus animate NPC to the train, else just remove it from scene
+            if(!this.blured) {
+              npc.moveAlongPath(path_to_train, true, () => {
+                this.turnstile.splice(this.turnstile.indexOf(npc), 1);
+                // this.mempoolSign.updateText(`In mempool\n${this.npcs.length --}`)
+
+                if(this.turnstile.length == 0) {
+                  if(!trainDeparted && !this.blured) {
+                    console.log("Last one to board. Can send train away now!")
+                    this.train.depart();
+                    trainDeparted = true;
+                    this.turnstile = [];                      
+                  }
+                } 
+              });
+            }
+            else {
+              // this.turnstile.splice(this.turnstile.indexOf(npc), 1);
+              this.turnstile = [];
+              npc.tooltip.destroy();
+              npc.destroy(); 
+            }
+
+            this.npcs.splice(this.npcs.indexOf(npc), 1);       
+            this.mempoolSign.updateText(`In mempool\n${this.npcs.length}`);
+          }
+
+          this.heightSign.updateText(`Current height\n${this.currHeight}`);
+
           // The train should leave even if it's empty             
-          if(this.turnstile == 0) {
+          if(this.turnstile.length == 0) {
             if(!trainDeparted && !this.blured) {
               console.log("Train leaving with no passengers!")
               this.train.depart();
