@@ -1,73 +1,77 @@
 import Phaser from 'phaser';
 import NPC from '../objects/npc';
-import Train from '../objects/train'
-import Sign from '../objects/sign'
+import Train from '../objects/train';
+import Sign from '../objects/sign';
 import http from '../http-common';
+import { bfs } from '../pathfinding';
 
+/**
+ * MainScene — the train station where zebras (transactions) wander
+ * on the platform and board the train (block) when mined.
+ */
 class MainScene extends Phaser.Scene {
   constructor() {
     super('MainScene');
 
+    /** @type {NPC[]} Active NPC sprites representing mempool transactions. */
     this.npcs = [];
-    this.dataLock;
+
+    /** @type {boolean} Prevents overlapping data fetches. */
+    this.dataLock = false;
+
+    /** @type {boolean} Prevents overlapping block-processing passes. */
+    this.blockProcessing = false;
+
+    /** @type {number} Timestamp of the last update cycle. */
     this.lastTime = 0;
-    this.timeInterval = 1000;    
-    this.bgInterval; 
-    this.turnstile = [];
+
+    /** @type {number} Milliseconds between update cycles. */
+    this.timeInterval = 1000;
+
+    /** @type {boolean} Whether the browser tab is hidden. */
+    this.blured = false;
   }
 
   init(data) {
-    this.npcData = data.npcData; // Receive the data from LoadingScene
+    this.npcData = data.npcData;
     this.currHeight = data.block.height;
-    // console.log(data.block)    
-  }
-
-  preload() {
-    // Load assets here (TODO: move this to LoadingScene)
-      // this.load.image('tileset', './assets/tileset.png');
-      // this.load.image('train', './assets/train.png')
-      // this.load.image('zebra', './assets/zebra.png');
-      // this.load.image('bronze', './assets/bronze.png');
-      // this.load.image('silver', './assets/silver.png');
-      // this.load.image('gold', './assets/gold.png');
-      // this.load.tilemapTiledJSON('map', './assets/station.json');      
   }
 
   create() {
-    // Initialize your scene here  
     const canvasWidth = this.game.config.width;
-    const canvasHeight = this.game.config.height;
     const tileWidth = 12;
     const mapWidth = 45;
-    const mapHeight = 62;
-    const mapWidthInPixels = mapWidth * tileWidth;
-    const mapHeightInPixels = mapHeight * tileWidth;
 
     this.blured = false;
 
-    // Calculate scale factor to fit the map to the canvas width
+    // Scale the tilemap to fit the canvas
+    const mapWidthInPixels = mapWidth * tileWidth;
     this.scaleFactor = canvasWidth / mapWidthInPixels;
-    // this.scaleFactor = canvasHeight / mapHeightInPixels;
+
     this.map = this.make.tilemap({ key: 'map' });
     const tileset = this.map.addTilesetImage('subway', 'tileset');
     const layer = this.map.createLayer(0, tileset);
-    
+
     layer.setScale(this.scaleFactor);
-    layer.setCollisionByProperty({collides: true});
+    layer.setCollisionByProperty({ collides: true });
 
-    // Center the canvas in the window    
-    // this.scale.displaySize.setAspectRatio(canvasWidth / canvasHeight);
-    // this.scale.resize(mapWidthInPixels*this.scaleFactor, mapHeightInPixels*this.scaleFactor);
-    // this.scale.refresh();
-  
-    // Set world boundaries
-    this.physics.world.setBounds(0, 0, this.scale.width, this.scale.height, true, true , true, true);    
+    this.physics.world.setBounds(
+      0, 0,
+      this.scale.width, this.scale.height,
+      true, true, true, true
+    );
 
-    // Train initialization stuff
-    this.train = new Train(this, 22 * this.map.tileWidth * this.scaleFactor, 10 * this.map.tileHeight * this.scaleFactor, 'train', this.scaleFactor);    
+    // Train (the block)
+    this.train = new Train(
+      this,
+      22 * this.map.tileWidth * this.scaleFactor,
+      10 * this.map.tileHeight * this.scaleFactor,
+      'train',
+      this.scaleFactor
+    );
     this.physics.add.collider(this.train, layer);
-    
-    // Create a grid representation from the tilemap layer
+
+    // Build the navigation grid from the tilemap
     this.grid = [];
     for (let y = 0; y < this.map.height; y++) {
       const row = [];
@@ -76,392 +80,366 @@ class MainScene extends Phaser.Scene {
         row.push({ x, y, collides: tile ? tile.collides : false });
       }
       this.grid.push(row);
-    }    
+    }
 
-    // Visualize the collision boxes for debugging
-  //   const debugGraphics = this.add.graphics().setAlpha(0.75);
-  //   layer.renderDebug(debugGraphics, {
-  //     tileColor: null, // Non-colliding tiles
-  //     collidingTileColor: new Phaser.Display.Color(243, 134, 48, 255), // Colliding tiles
-  //   });
-
-  //   this.input.on('pointermove', pointer => {
-  //     const worldPoint = pointer.positionToCamera(this.cameras.main);
-  //     const tileX = this.map.worldToTileX(worldPoint.x);
-  //     const tileY = this.map.worldToTileY(worldPoint.y);
-    
-  //     debugText.setText(`Tile X: ${tileX}, Tile Y: ${tileY}`);
-  // });
-    
-  // const debugText = this.add.text(16, 16, '', {
-  //   fontSize: '58px',
-  //   fill: '#ffffff'
-  // });
-    
-    // Create all tx NPCs received from init
-    for(const tx of this.npcData) {
-      // console.log(tx)
-      let posx = (2+Math.random()*41) * this.map.tileWidth * this.scaleFactor;
-      let posy = (16 + Math.random()*8) * this.map.tileHeight * this.scaleFactor;
+    // Spawn initial mempool NPCs
+    for (const tx of this.npcData) {
+      const posx = (2 + Math.random() * 41) * this.map.tileWidth * this.scaleFactor;
+      const posy = (16 + Math.random() * 8) * this.map.tileHeight * this.scaleFactor;
       const npc = new NPC(this, tx, posx, posy, this.scaleFactor);
       npc.canWander = true;
       this.npcs.push(npc);
-      // this.physics.add.collider(this.npcs, layer);
     }
 
-    // Add sign info
-    this.heightSign = new Sign(this, 7 * this.map.tileWidth * this.scaleFactor, 3 * this.map.tileWidth * this.scaleFactor, `Current block\n${this.currHeight}`, this.scaleFactor)
-    this.mempoolSign = new Sign(this, 38 * this.map.tileWidth * this.scaleFactor, 3 * this.map.tileWidth * this.scaleFactor, `In mempool\n${this.npcs.length}`, this.scaleFactor)
-    
+    // Station signs
+    this.heightSign = new Sign(
+      this,
+      7 * this.map.tileWidth * this.scaleFactor,
+      3 * this.map.tileWidth * this.scaleFactor,
+      `Current block\n${this.currHeight}`,
+      this.scaleFactor
+    );
+    this.mempoolSign = new Sign(
+      this,
+      38 * this.map.tileWidth * this.scaleFactor,
+      3 * this.map.tileWidth * this.scaleFactor,
+      `In mempool\n${this.npcs.length}`,
+      this.scaleFactor
+    );
+
     this.enableCameraScrolling();
 
-    // When tabs are switched, try to keep txns in sync
-    this.game.events.on('blur', () => {      
+    // Track tab visibility
+    this.game.events.on('blur', () => {
       this.blured = true;
-      // const train_tweens = this.tweens.getTweensOf(this.train);
-      // if(train_tweens[0] && train_tweens[0].isPlaying()) {
-      //   // train_tweens[0].stop();
-      //   // this.train.arrive();
-      // }
-
-      // this.npcs.forEach(async (npc) => {  
-      //   const npc_tweens = this.tweens.getTweensOf(npc);
-      //   if(npc_tweens[0] && npc_tweens[0].isPlaying()) {
-      //     // npc_tweens[0].pause();
-      //   }
-      // });
     }, this);
-        
-    this.game.events.on('focus', () => {      
-      if(this.blured) {
-        this.blured = false;
 
-        // this.dataLock = true;
-        
-        // // console.log("When focus is back to this tab, remove already mined txns ...")        
-        // this.npcs.forEach(async (npc) => {  
-        //   const npc_tweens = this.tweens.getTweensOf(npc);
-
-        //   const res = await http.get(`/txinfo/?txid=${npc.txid}`);
-  
-        //   if(res.data.height > 0 || res.data.error) {            
-        //     if(npc_tweens[0] && npc_tweens[0].isPlaying()) {
-        //       // npc_tweens[0].stop();
-        //       npc_tweens[0].destroy();
-        //     }
-        //     npc.tooltip.destroy();
-        //     npc.destroy();            
-        //     this.npcs.splice(this.npcs.indexOf(npc), 1);
-        //   }
-        //   else {
-        //     // if(npc_tweens[0]) npc_tweens[0].resume();
-        //   }
-        // });        
-        // this.dataLock = false;
-      }
+    this.game.events.on('focus', () => {
+      this.blured = false;
     }, this);
   }
 
-  async update(time, delta) {
-    // Update your scene here
-    if(time - this.lastTime >= this.timeInterval) {
-      
-      // Trying a cool animation
-      for (const npc of this.npcs) {
-        if (this.blured) break;
-        if(Math.random() < 0.2) continue;
+  // ---------------------------------------------------------------------------
+  // Main update loop
+  // ---------------------------------------------------------------------------
 
-        // wander only every few seconds
-        if (!npc.nextMoveAt) npc.nextMoveAt = time + Phaser.Math.Between(2000, 6000);
-        if (time < npc.nextMoveAt) continue;
+  update(time, _delta) {
+    if (time - this.lastTime < this.timeInterval) return;
+    this.lastTime = time;
 
-        npc.nextMoveAt = time + Phaser.Math.Between(1500, 7000); // schedule next move
+    // Animate idle NPCs with staggered wandering
+    this.updateWandering(time);
 
-        if (!npc.playing && npc.canWander) {
-          const startX = this.map.worldToTileX(npc.x);
-          const startY = this.map.worldToTileY(npc.y);
-
-          // pick a nearby tile within 2–4 tiles of current position
-          const dx = Phaser.Math.Between(-6, 6);
-          const dy = Phaser.Math.Between(-3, 3);
-
-          const posx = Phaser.Math.Clamp(startX + dx, 1, 44);
-          const posy = Phaser.Math.Clamp(startY + dy, 16, 27);
-
-          const start = this.grid[startY][startX];
-          const goal = this.grid[posy][posx];
-          const path = bfs(start, goal, this.grid);
-
-          npc.moveAlongPath(path, false);
-        }
-      }
-
-      this.lastTime = time;
-      if(this.dataLock) {
-        console.log("Already processing ...")
-        return; 
-      }
-      
-      this.dataLock = true;
-
-      let mempool;
-
-      http.get('/mempool').then(async (res) => {        
-        // const mempool = res.data;
-        mempool = res.data;
-        
-        for(const tx of mempool) {          
-          if(this.npcs.filter((npc) => npc.txid == tx.txid).length == 0) {
-            // console.log("Spawn new NPC:", tx.txid);
-
-            const spawnx = 22;
-            const spawny = 62;      
-            const start = this.grid[spawny][spawnx];
-            
-            let posx = parseInt(Math.random()*44);
-            let posy = parseInt(Math.random()*12) + 16;
-
-            for(let attempt = 0; attempt < 10; attempt ++) {                            
-              const tx = Math.floor(Math.random() * 44);
-              const ty = Math.floor(Math.random() * 12) + 16;
-
-              const ok = this.npcs.every(n => {
-                const dx = n.x - this.map.tileToWorldX(tx);
-                const dy = n.y - this.map.tileToWorldY(ty);
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist >= 32) {                  
-                  return true;
-                } else {
-                  return false;
-                }
-              });
-
-              if(ok) {                
-                posx = tx;
-                posy = ty;
-                break;
-              } 
-            }
-            
-            const goal = this.grid[posy][posx];
-            const path = bfs(start, goal, this.grid);
-            
-            // Add NPCs in a timeout, to avoid creating each new npc at once.
-            // setTimeout(async () => {
-              // Double check if tx is in mempool
-              const res = await http.get(`/txinfo/?txid=${tx.txid}`); 
-              // console.log("Tx mined in height: ", res.data);       
-              if((res.data.height < 0) && !res.data.error) {
-                const npc = new NPC(this, tx, this.map.tileToWorldX(spawnx), this.map.tileToWorldY(spawny), this.scaleFactor);                            
-                this.npcs.push(npc);
-                
-                // If tab is in focus, animate NPC, else spawn in target position
-                if(!this.blured) {
-                  npc.moveAlongPath(path, false);
-                }
-                else {
-                  npc.setX(posx * 12 * this.scaleFactor);
-                  npc.setY(posy * 12 * this.scaleFactor);
-                  npc.canWander = true;
-                }
-              }
-            // },300);
-          }          
-        };        
-        
-        this.mempoolSign.updateText(`In mempool\n${this.npcs.length}`)
-      });             
-
-      await http.get('/latestblock').then(async (res) => {
-        // let totalNpcs = this.npcs.length;
-
-        // if(res.data.height > this.currHeight || mempool.length < this.npcs.length) {        
-        if(res.data.height > this.currHeight) {        
-          this.currHeight = res.data.height;
-          // console.log(this.currHeight)
-          // this.heightSign.updateText(`Current height\n${this.currHeight}`);
-          
-          // Keep any unmied tx and send the rest to the train          
-          
-          let trainDeparted = false;
-
-          for(const npc of [...this.npcs]) {
-            const res = await http.get(`/txinfo/?txid=${npc.txid}`);
-            
-            // Animete only mined tx
-            if(res.data.height > 0) {                              
-              this.turnstile.push(npc);                        
-            }            
-            // If not mined yet, keep the tx
-            else {
-              console.log(`Keeping ${npc.txid}`);
-            }           
-          }
-
-          for(const npc of [...this.turnstile]) {
-            npc.canWander = false;
-            const startX = this.map.worldToTileX(npc.x);
-            const startY = this.map.worldToTileY(npc.y);
-            const start = this.grid[startY][startX];
-      
-            let posx = 6;
-            let posy = 11;
-      
-            if(startX > 12 && startX <= 21) posx = 18;
-            else if(startX > 21 && startX <= 30) posx = 25;
-            else if(startX > 30) posx = 37;
-      
-            const goal = this.grid[posy][posx];
-            const path_to_train = bfs(start, goal, this.grid);
-              
-            // Stop any current NPC animation
-            const npc_tweens = this.tweens.getTweensOf(npc);
-            if(npc_tweens[0] && npc_tweens[0].isPlaying()) {
-              npc_tweens[0].stop();
-              npc_tweens[0].destroy();
-            }
-              
-            // If tab is in focus animate NPC to the train, else just remove it from scene
-            if(!this.blured) {
-              npc.moveAlongPath(path_to_train, true, () => {
-                this.turnstile.splice(this.turnstile.indexOf(npc), 1);
-                // this.mempoolSign.updateText(`In mempool\n${this.npcs.length --}`)
-
-                if(this.turnstile.length == 0) {
-                  if(!trainDeparted && !this.blured) {
-                    console.log("Last one to board. Can send train away now!")
-                    this.train.depart();
-                    trainDeparted = true;
-                    this.turnstile = [];                      
-                  }
-                } 
-              });
-            }
-            else {
-              // this.turnstile.splice(this.turnstile.indexOf(npc), 1);
-              this.turnstile = [];
-              npc.tooltip.destroy();
-              npc.destroy(); 
-            }
-
-            this.npcs.splice(this.npcs.indexOf(npc), 1);       
-            this.mempoolSign.updateText(`In mempool\n${this.npcs.length}`);
-          }
-
-          this.heightSign.updateText(`Current height\n${this.currHeight}`);
-
-          // The train should leave even if it's empty             
-          if(this.turnstile.length == 0) {
-            if(!trainDeparted && !this.blured) {
-              console.log("Train leaving with no passengers!")
-              this.train.depart();
-              trainDeparted = true;
-              this.turnstile = 0;
-            }
-          }         
-        }
-
-        this.dataLock = false;
-      });
+    // Poll server for new transactions and block changes
+    if (!this.dataLock) {
+      this.pollServer();
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Wandering logic
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Make idle NPCs wander to random nearby tiles.
+   * @param {number} time  Current game time in ms
+   */
+  updateWandering(time) {
+    for (const npc of this.npcs) {
+      if (this.blured) break;
+      if (npc.isDestroyed) continue;
+      if (Math.random() < 0.2) continue;
+
+      // Stagger movement: each NPC has its own next-move timer
+      if (!npc.nextMoveAt) npc.nextMoveAt = time + Phaser.Math.Between(2000, 6000);
+      if (time < npc.nextMoveAt) continue;
+      npc.nextMoveAt = time + Phaser.Math.Between(1500, 7000);
+
+      if (!npc.isPlaying && npc.canWander) {
+        const startX = this.map.worldToTileX(npc.x);
+        const startY = this.map.worldToTileY(npc.y);
+
+        const dx = Phaser.Math.Between(-6, 6);
+        const dy = Phaser.Math.Between(-3, 3);
+
+        const posx = Phaser.Math.Clamp(startX + dx, 1, 44);
+        const posy = Phaser.Math.Clamp(startY + dy, 16, 27);
+
+        const start = this.grid[startY] && this.grid[startY][startX];
+        const goal = this.grid[posy] && this.grid[posy][posx];
+        if (!start || !goal) continue;
+
+        const path = bfs(start, goal, this.grid);
+        npc.moveAlongPath(path, false);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Server polling
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Poll the server for mempool updates and new blocks.
+   * Uses dataLock to prevent concurrent requests.
+   */
+  async pollServer() {
+    this.dataLock = true;
+
+    try {
+      // Fetch mempool and latest block in parallel
+      const [mempoolRes, blockRes] = await Promise.all([
+        http.get('/mempool'),
+        http.get('/latestblock'),
+      ]);
+
+      const mempool = mempoolRes.data;
+      const latestHeight = blockRes.data.height;
+
+      // Spawn new transactions that aren't already represented
+      await this.spawnNewTransactions(mempool);
+
+      // If a new block was mined, handle boarding + departure
+      if (latestHeight > this.currHeight) {
+        this.currHeight = latestHeight;
+        await this.handleNewBlock();
+      }
+    } catch (err) {
+      console.error('Poll error:', err.message);
+    } finally {
+      this.dataLock = false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Spawning new transactions
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Spawn NPC zebras for new transactions that appeared in the mempool.
+   * @param {{ txid: string, type: string }[]} mempool  Current mempool from server
+   */
+  async spawnNewTransactions(mempool) {
+    for (const tx of mempool) {
+      // Skip if we already have this NPC
+      if (this.npcs.some((npc) => npc.txid === tx.txid)) continue;
+
+      const spawnTileX = 22;
+      const spawnTileY = 62;
+      const start = this.grid[spawnTileY] && this.grid[spawnTileY][spawnTileX];
+      if (!start) continue;
+
+      // Find a non-overlapping target tile
+      let targetX = Math.floor(Math.random() * 44);
+      let targetY = Math.floor(Math.random() * 12) + 16;
+
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const candidateX = Math.floor(Math.random() * 44);
+        const candidateY = Math.floor(Math.random() * 12) + 16;
+
+        const ok = this.npcs.every((n) => {
+          const dxPx = n.x - this.map.tileToWorldX(candidateX);
+          const dyPx = n.y - this.map.tileToWorldY(candidateY);
+          return Math.sqrt(dxPx * dxPx + dyPx * dyPx) >= 32;
+        });
+
+        if (ok) {
+          targetX = candidateX;
+          targetY = candidateY;
+          break;
+        }
+      }
+
+      const goal = this.grid[targetY] && this.grid[targetY][targetX];
+      if (!goal) continue;
+
+      // Double-check the tx is actually still in the mempool (not yet mined)
+      try {
+        const txInfoRes = await http.get(`/txinfo/?txid=${tx.txid}`);
+        if (txInfoRes.data.height >= 0 && !txInfoRes.data.error) {
+          // Already mined or invalid, skip
+          continue;
+        }
+      } catch {
+        continue;
+      }
+
+      const path = bfs(start, goal, this.grid);
+
+      const npc = new NPC(
+        this,
+        tx,
+        this.map.tileToWorldX(spawnTileX),
+        this.map.tileToWorldY(spawnTileY),
+        this.scaleFactor
+      );
+      this.npcs.push(npc);
+
+      if (!this.blured) {
+        npc.moveAlongPath(path, false);
+      } else {
+        npc.setX(targetX * 12 * this.scaleFactor);
+        npc.setY(targetY * 12 * this.scaleFactor);
+        npc.canWander = true;
+      }
+    }
+
+    this.mempoolSign.updateText(`In mempool\n${this.npcs.length}`);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Block handling — the core boarding + departure sequence
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Handle a newly mined block:
+   * 1. Query each NPC to see if its tx was mined
+   * 2. Animate mined NPCs walking to the train
+   * 3. Wait for ALL boarding animations to complete
+   * 4. Only THEN depart the train
+   */
+  async handleNewBlock() {
+    if (this.blockProcessing) return;
+    this.blockProcessing = true;
+
+    // Identify which NPCs were mined in this block
+    const minedNpcs = [];
+    const keptNpcs = [];
+
+    for (const npc of this.npcs) {
+      if (npc.isDestroyed) continue;
+
+      try {
+        const res = await http.get(`/txinfo/?txid=${npc.txid}`);
+        if (res.data.height > 0) {
+          minedNpcs.push(npc);
+        } else {
+          keptNpcs.push(npc);
+        }
+      } catch {
+        // On error, keep the NPC
+        keptNpcs.push(npc);
+      }
+    }
+
+    // Update the NPC list to only contain unmined transactions
+    this.npcs = keptNpcs;
+
+    if (minedNpcs.length === 0) {
+      // Empty block (or all txs were already removed) — train still departs
+      console.log('Train leaving with no passengers!');
+      this.train.depart();
+      this.heightSign.updateText(`Current height\n${this.currHeight}`);
+      this.mempoolSign.updateText(`In mempool\n${this.npcs.length}`);
+      this.blockProcessing = false;
+      return;
+    }
+
+    // --- Boarding sequence ---
+    // Track how many NPCs have finished their boarding animation
+    let boardedCount = 0;
+    const totalBoarding = minedNpcs.length;
+
+    const onNpcBoarded = () => {
+      boardedCount++;
+      this.mempoolSign.updateText(`In mempool\n${this.npcs.length}`);
+
+      if (boardedCount >= totalBoarding) {
+        console.log(`All ${totalBoarding} passengers boarded. Departing!`);
+        this.train.depart();
+      }
+    };
+
+    for (const npc of minedNpcs) {
+      npc.canWander = false;
+      npc.stopCurrentTween();
+
+      if (this.blured) {
+        // Tab not visible — skip animation, just clean up
+        npc.cleanup();
+        onNpcBoarded();
+        continue;
+      }
+
+      // Calculate path to the nearest train door
+      const startX = this.map.worldToTileX(npc.x);
+      const startY = this.map.worldToTileY(npc.y);
+      const start = this.grid[startY] && this.grid[startY][startX];
+
+      // Pick the closest of 4 door positions based on NPC's x
+      let doorX = 6;
+      if (startX > 12 && startX <= 21) doorX = 18;
+      else if (startX > 21 && startX <= 30) doorX = 25;
+      else if (startX > 30) doorX = 37;
+
+      const doorY = 11;
+      const goal = this.grid[doorY] && this.grid[doorY][doorX];
+
+      if (!start || !goal) {
+        // Can't pathfind — just clean up
+        npc.cleanup();
+        onNpcBoarded();
+        continue;
+      }
+
+      const pathToTrain = bfs(start, goal, this.grid);
+
+      npc.moveAlongPath(pathToTrain, true, () => {
+        onNpcBoarded();
+      });
+    }
+
+    this.heightSign.updateText(`Current height\n${this.currHeight}`);
+    this.blockProcessing = false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Camera scrolling
+  // ---------------------------------------------------------------------------
+
   enableCameraScrolling() {
-    // Mouse wheel scrolling
-    this.input.on('wheel', (pointer, gameObjects, deltaX, deltaY, deltaZ) => {
-      // this.cameras.main.scrollY += deltaY * 0.1;
+    // Mouse wheel
+    this.input.on('wheel', (_pointer, _gameObjects, _deltaX, deltaY) => {
       this.scrollCamera(deltaY * 0.8);
     });
-  
-     // Touch scrolling
-     let touchStartY = 0;
-     this.input.on('pointerdown', pointer => {
-       if (pointer.isDown) {
-         touchStartY = pointer.y;
-       }
-     });
 
-     this.input.on('pointermove', pointer => {
-      // console.log(pointer)
+    // Touch drag
+    let touchStartY = 0;
+    this.input.on('pointerdown', (pointer) => {
+      if (pointer.isDown) {
+        touchStartY = pointer.y;
+      }
+    });
+
+    this.input.on('pointermove', (pointer) => {
       if (pointer.isDown) {
         const deltaY = pointer.y - touchStartY;
-        // this.cameras.main.scrollY -= deltaY * 0.4;
-
         this.scrollCamera(deltaY * -0.8);
         touchStartY = pointer.y;
       }
     });
 
-    // Add event listener for window focus
     window.addEventListener('focus', () => {
       this.input.mousePointer.isDown = false;
     });
 
-    document.addEventListener('wheel', event => {
-      const delta = event.deltaY;
-      this.scrollCamera(delta * 0.8);
+    document.addEventListener('wheel', (event) => {
+      this.scrollCamera(event.deltaY * 0.8);
     });
   }
 
+  /**
+   * Scroll the camera vertically, clamped to the map bounds.
+   * @param {number} deltaY  Scroll amount in pixels
+   */
   scrollCamera(deltaY) {
-    // Calculate new scrollY value
     const newScrollY = Phaser.Math.Clamp(
       this.cameras.main.scrollY + deltaY,
       0,
       this.map.heightInPixels * this.scaleFactor - this.game.config.height
     );
     this.cameras.main.scrollY = newScrollY;
-    // console.log(newScrollY)
   }
-
 }
 
 export default MainScene;
-
-function bfs(start, goal, grid) {
-  const queue = [];
-  const cameFrom = new Map();
-  queue.push(start);
-  cameFrom.set(start, null);
-
-  while (queue.length > 0) {
-    const current = queue.shift();
-    
-    if (current === goal) {
-      const path = [];
-      let temp = current;
-      while (temp) {
-        path.push(temp);
-        temp = cameFrom.get(temp);
-      }
-      return path.reverse();
-    }
-
-    const neighbors = getNeighbors(current, grid, cameFrom);
-    for (const neighbor of neighbors) {
-      if (!cameFrom.has(neighbor)) {        
-        queue.push(neighbor);                
-        cameFrom.set(neighbor, current);
-      }
-    }
-  
-  }
-
-  return [];
-}
-
-function getNeighbors(node, grid) {
-  const neighbors = [];
-  const dirs = [[1, 0], [0, 1], [-1, 0], [0, -1], [-1, -1], [1, 1]];
-
-  for (const [dx, dy] of dirs) {
-    const x = node.x + dx;
-    const y = node.y + dy;
-
-    if (grid[y] && grid[y][x] && grid[y][x].collides !== true) {
-      neighbors.push(grid[y][x]);      
-    }
-  }
-
-  return neighbors;
-}
