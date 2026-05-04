@@ -75,8 +75,7 @@ class MainScene extends Phaser.Scene {
     // --- Train (depth 10) ---
     this.train = new Train(this, 22 * T, 13.5 * T, 'train', this.scaleFactor);
 
-    // --- Decorative furniture (depth 15) ---
-    this.placeFurniture();
+
 
     // --- Spawn NPCs ---
     const pb = this.platformBounds;
@@ -100,37 +99,26 @@ class MainScene extends Phaser.Scene {
 
   extractDecoFrames() {
     const tex = this.textures.get('tileset_new');
-    // Floor tiles (row 0) — degraded white with grout
-    tex.add('floor_1', 0, 4, 4, 162, 162);
-    tex.add('floor_2', 0, 172, 4, 162, 162);
-    tex.add('floor_3', 0, 340, 4, 162, 162);
-    tex.add('floor_4', 0, 510, 4, 162, 162);
-    // Yellow tactile tile
-    tex.add('tactile', 0, 685, 4, 165, 162);
-    // Concrete wall
-    tex.add('wall_concrete', 0, 4, 174, 162, 112);
-    // Brick wall
-    tex.add('wall_brick', 0, 516, 174, 126, 112);
-    tex.add('wall_brick2', 0, 646, 174, 126, 112);
-    // Graffiti wall
-    tex.add('wall_graffiti', 0, 780, 174, 100, 112);
-    // Metal pillar
-    tex.add('pillar', 0, 882, 174, 140, 460);
-    // Red vending machine
-    tex.add('vending_red', 0, 4, 296, 248, 230);
-    // Blue vending machine
-    tex.add('vending_blue', 0, 260, 296, 248, 230);
-    // Trash can
-    tex.add('trash', 0, 516, 310, 96, 200);
-    // Bench (upper)
-    tex.add('bench', 0, 618, 346, 254, 112);
-    // Track/gravel
-    tex.add('gravel', 0, 4, 636, 162, 138);
-    tex.add('track_rail', 0, 340, 636, 340, 138);
-    // Hazard stripe
-    tex.add('hazard', 0, 4, 784, 162, 96);
-    // Dark tunnel wall
-    tex.add('tunnel_dark', 0, 512, 928, 170, 92);
+    // Floor tiles (row 0) — degraded white with grout lines
+    // Inset by 6px on each edge to avoid black grid borders
+    tex.add('floor_1', 0, 10, 10, 150, 150);
+    tex.add('floor_2', 0, 178, 10, 150, 150);
+    tex.add('floor_3', 0, 346, 10, 150, 150);
+    tex.add('floor_4', 0, 516, 10, 150, 150);
+    // Yellow tactile tile (inset)
+    tex.add('tactile', 0, 691, 10, 153, 150);
+    // Concrete wall (inset)
+    tex.add('wall_concrete', 0, 10, 180, 150, 100);
+    // Brick wall (inset)
+    tex.add('wall_brick', 0, 522, 180, 114, 100);
+    tex.add('wall_brick2', 0, 652, 180, 114, 100);
+    // Graffiti wall (inset)
+    tex.add('wall_graffiti', 0, 786, 180, 88, 100);
+    // Track/gravel (inset)
+    tex.add('gravel', 0, 10, 642, 150, 126);
+    tex.add('track_rail', 0, 346, 642, 328, 126);
+    // Hazard stripe (inset)
+    tex.add('hazard', 0, 10, 790, 150, 84);
   }
 
   // ---------------------------------------------------------------------------
@@ -156,11 +144,7 @@ class MainScene extends Phaser.Scene {
           }
         }
 
-        // Furniture collision zones (NPCs walk around these)
-        // Vending machines (left side)
-        if (y >= 19 && y <= 22 && x >= 1 && x <= 5) collides = true;
-        // Bench (right side)
-        if (y >= 19 && y <= 21 && x >= 38 && x <= 43) collides = true;
+
 
         row.push({ x, y, collides });
       }
@@ -203,24 +187,11 @@ class MainScene extends Phaser.Scene {
     const scaleX = openWidth / sky.width;
     sky.setScale(scaleX);
 
-    // Show the vibrant midsection (buildings with neon signs + Zcash logos)
-    const cropY = Math.floor(sky.height * 0.20); // show neon-heavy building area
+    // Show the neon-heavy building midsection (Zcash logos, pink neon strips)
+    const cropY = Math.floor(sky.height * 0.30);
     const cropH = Math.floor(skyH / scaleX);
     sky.setCrop(0, cropY, sky.width, cropH);
 
-    // Twinkling stars in the skyline area
-    for (let i = 0; i < 10; i++) {
-      const sx = openLeft + Math.random() * openWidth;
-      const sy = Math.random() * skyH * 0.4;
-      const star = this.add.circle(sx, sy, Math.random() < 0.3 ? 2 : 1, 0xffffff, 0.7);
-      star.setDepth(1);
-      this.tweens.add({
-        targets: star, alpha: { from: 0.2, to: 1 },
-        duration: 1500 + Math.random() * 2000,
-        yoyo: true, repeat: -1, delay: Math.random() * 3000,
-        ease: 'Stepped', easeParams: [2],
-      });
-    }
   }
 
   renderStationWalls() {
@@ -248,15 +219,7 @@ class MainScene extends Phaser.Scene {
     gEdge.fillRect(this.wallRightStart * T - 4, 0, 8, skyH);
     gEdge.setDepth(3);
 
-    // Pillar sprites on walls for detail
-    const pillarScale = 0.32;
-    const pillarPositions = [1, 4, this.COLS - 5, this.COLS - 2];
-    for (const px of pillarPositions) {
-      const p = this.add.image(px * T, 0, 'tileset_new', 'pillar');
-      p.setOrigin(0, 0).setScale(pillarScale).setDepth(3);
-      const maxH = Math.floor(skyH / pillarScale);
-      p.setCrop(0, 0, p.width, Math.min(p.height, maxH));
-    }
+
   }
 
   renderWallBelow() {
@@ -346,7 +309,7 @@ class MainScene extends Phaser.Scene {
     const floorY = 19 * T; // 456
     const floorH = 15 * T; // 360 (rows 19-33)
     const floorFrames = ['floor_1', 'floor_2', 'floor_3', 'floor_4'];
-    const tileSize = T * 2; // each floor tile covers 2x2 game tiles
+    const tileSize = T * 4; // each floor tile covers 4x4 game tiles (scaled 2x bigger)
 
     for (let y = floorY; y < floorY + floorH; y += tileSize) {
       for (let x = 0; x < 1080; x += tileSize) {
@@ -355,41 +318,9 @@ class MainScene extends Phaser.Scene {
         ft.setOrigin(0, 0).setDisplaySize(tileSize, tileSize).setDepth(7);
       }
     }
-
-    // Grout accent lines (yellow grid every ~5 tiles like in the design)
-    const gGrout = this.add.graphics();
-    gGrout.lineStyle(1, 0xd4c85a, 0.15);
-    for (let x = 0; x < 1080; x += T * 5) {
-      gGrout.moveTo(x, floorY).lineTo(x, floorY + floorH);
-    }
-    for (let y = floorY; y < floorY + floorH; y += T * 5) {
-      gGrout.moveTo(0, y).lineTo(1080, y);
-    }
-    gGrout.strokePath();
-    gGrout.setDepth(8);
   }
 
-  placeFurniture() {
-    const T = this.TILE;
-    const fDepth = 15;
-    const s = 0.3;
 
-    // Red vending machine
-    const vm1 = this.add.image(1.5 * T, 19 * T, 'tileset_new', 'vending_red');
-    vm1.setOrigin(0, 0).setScale(s).setDepth(fDepth);
-
-    // Blue vending machine
-    const vm2 = this.add.image(5 * T, 19 * T, 'tileset_new', 'vending_blue');
-    vm2.setOrigin(0, 0).setScale(s).setDepth(fDepth);
-
-    // Trash can
-    const trash = this.add.image(8.5 * T, 20 * T, 'tileset_new', 'trash');
-    trash.setOrigin(0, 0).setScale(s * 0.7).setDepth(fDepth);
-
-    // Bench (right side)
-    const bench = this.add.image(38 * T, 19.5 * T, 'tileset_new', 'bench');
-    bench.setOrigin(0, 0).setScale(s).setDepth(fDepth);
-  }
 
   // ---------------------------------------------------------------------------
   // Update loop
