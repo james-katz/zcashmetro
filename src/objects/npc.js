@@ -206,7 +206,7 @@ class NPC extends Phaser.GameObjects.Container {
       targets: this,
       ease: 'linear',
       tweens: path.map((p) => ({
-        x: (p.x * 12 + (p.x < 24 ? 12 : 0)) * this.scaleFactor,
+        x: p.x * 12 * this.scaleFactor,
         y: p.y * 12 * this.scaleFactor,
         duration: speed - Math.random() * 20,
       })),

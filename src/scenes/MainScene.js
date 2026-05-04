@@ -6,26 +6,23 @@ import { bfs, bfsClosestDoor } from '../pathfinding';
 import zmEvents from '../events';
 
 /**
- * MainScene — the train station where zebras (transactions) wander
- * on the platform and board the train (block) when mined.
+ * MainScene — fully rendered station scene (no Tiled tilemap).
  *
- * Fixed resolution: 1080×840 (Phaser FIT scales to viewport).
- * Scale factor: 1080 / (45 * 12) = 2.0
+ * Fixed resolution: 1080×840, tile unit = 24px (12px * scaleFactor 2.0).
  *
- * Visual layers (by depth):
- *   0  — Dark background fill (entire canvas)
- *   1  — Skyline image (upper portion only, behind station windows)
- *   3  — Station pillars (overlap skyline edges for depth effect)
- *   5  — Tilemap (collision grid — wall, track, platform tiles)
- *  10  — Train sprite
- *  15  — Decorative furniture sprites (from tileset_new)
- *  22  — NPCs (zebras)
+ * Layout (rows of 24px):
+ *   0-7   (y 0–192):   Upper station — walls L/R, skyline center opening
+ *   8-11  (y 192–288):  Concrete wall below skyline
+ *   12-16 (y 288–408):  Track area (gravel, rails)
+ *   17    (y 408–432):  Yellow hazard line (with 4 door gaps)
+ *   18    (y 432–456):  Tactile safety strip
+ *   19-33 (y 456–816):  Platform floor (walkable)
+ *   34    (y 816–840):  Bottom edge
  */
 class MainScene extends Phaser.Scene {
   constructor() {
     super('MainScene');
 
-    /** @type {NPC[]} */
     this.npcs = [];
     this.dataLock = false;
     this.blockProcessing = false;
@@ -33,21 +30,22 @@ class MainScene extends Phaser.Scene {
     this.timeInterval = 1000;
     this.blured = false;
 
-    // Fixed scale: game is 1080px wide, tilemap is 45*12=540px native
+    this.TILE = 24;         // 12px native * 2.0 scale
+    this.COLS = 45;
+    this.ROWS = 35;
     this.scaleFactor = 2.0;
 
-    // Train door tile positions (row 21, spaced across the platform)
+    // Skyline opening (tile columns)
+    this.wallLeftEnd = 7;   // tiles 0-6 = left wall
+    this.wallRightStart = 38; // tiles 38-44 = right wall
+
+    // Train door positions
     this.doorPositions = [
-      { x: 8, y: 21 },
-      { x: 18, y: 21 },
-      { x: 27, y: 21 },
-      { x: 36, y: 21 },
+      { x: 8, y: 18 }, { x: 18, y: 18 },
+      { x: 27, y: 18 }, { x: 36, y: 18 },
     ];
 
-    // Platform walkable bounds (tile coords)
-    this.platformBounds = { minX: 1, maxX: 43, minY: 23, maxY: 33 };
-
-    // Spawn point (bottom-center)
+    this.platformBounds = { minX: 1, maxX: 43, minY: 19, maxY: 33 };
     this.spawnTile = { x: 22, y: 33 };
   }
 
@@ -57,200 +55,344 @@ class MainScene extends Phaser.Scene {
   }
 
   create() {
-    // --- Extract decorative sprite frames from tileset_new.png ---
+    const T = this.TILE;
+
+    // Extract sprite frames from tileset_new.png
     this.extractDecoFrames();
 
-    // --- Layer 0: Dark background fill (blocks skyline from showing below) ---
-    const bg = this.add.graphics();
-    bg.fillStyle(0x0e0f18, 1);
-    bg.fillRect(0, 0, 1080, 840);
-    bg.setDepth(0);
+    // --- Build collision grid (code-based, no tilemap) ---
+    this.buildGrid();
 
-    // --- Layer 1: Skyline (upper portion only, like subway windows) ---
-    this.createSkyline();
+    // --- Render scene layers ---
+    this.renderBackground();        // depth 0: dark fill
+    this.renderSkyline();           // depth 1: skyline in center opening
+    this.renderStationWalls();      // depth 2-3: walls framing skyline
+    this.renderWallBelow();         // depth 4: concrete wall below skyline
+    this.renderTracks();            // depth 5: gravel + rails
+    this.renderHazardLine();        // depth 6: yellow hazard + tactile
+    this.renderPlatformFloor();     // depth 7: tiled floor from tileset_new
 
-    // --- Layer 5: Tilemap (collision grid) ---
-    this.map = this.make.tilemap({ key: 'map' });
-    const tileset = this.map.addTilesetImage('subway', 'tileset');
-    const layer = this.map.createLayer(0, tileset);
+    // --- Train (depth 10) ---
+    this.train = new Train(this, 22 * T, 13.5 * T, 'train', this.scaleFactor);
 
-    layer.setScale(this.scaleFactor);
-    layer.setCollisionByProperty({ collides: true });
-    layer.setDepth(5);
-
-    this.physics.world.setBounds(0, 0, 1080, 840, true, true, true, true);
-
-    // --- Layer 3: Station pillars (depth effect over skyline) ---
-    this.createPillars();
-
-    // --- Layer 10: Train ---
-    this.train = new Train(
-      this,
-      22 * 12 * this.scaleFactor,
-      16 * 12 * this.scaleFactor,
-      'train',
-      this.scaleFactor
-    );
-    this.physics.add.collider(this.train, layer);
-
-    // --- Build navigation grid ---
-    this.grid = [];
-    for (let y = 0; y < this.map.height; y++) {
-      const row = [];
-      for (let x = 0; x < this.map.width; x++) {
-        const tile = layer.getTileAt(x, y);
-        row.push({ x, y, collides: tile ? tile.collides : false });
-      }
-      this.grid.push(row);
-    }
-
-    // --- Layer 15: Decorative furniture from new tileset ---
+    // --- Decorative furniture (depth 15) ---
     this.placeFurniture();
 
-    // --- Spawn initial NPCs ---
+    // --- Spawn NPCs ---
     const pb = this.platformBounds;
     for (const tx of this.npcData) {
-      const posx = (pb.minX + Math.random() * (pb.maxX - pb.minX)) * 12 * this.scaleFactor;
-      const posy = (pb.minY + Math.random() * (pb.maxY - pb.minY)) * 12 * this.scaleFactor;
+      const posx = (pb.minX + Math.random() * (pb.maxX - pb.minX)) * T;
+      const posy = (pb.minY + Math.random() * (pb.maxY - pb.minY)) * T;
       const npc = new NPC(this, tx, posx, posy, this.scaleFactor);
       npc.canWander = true;
       this.npcs.push(npc);
     }
 
-    // Send initial stats to navbar
     zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
 
-    // Camera doesn't scroll — fixed scene
-    // (removed enableCameraScrolling)
-
-    // Tab visibility
     this.game.events.on('blur', () => { this.blured = true; }, this);
     this.game.events.on('focus', () => { this.blured = false; }, this);
   }
 
   // ---------------------------------------------------------------------------
-  // Decorative sprite frame extraction
+  // Sprite frame extraction from tileset_new.png (1024×1024)
   // ---------------------------------------------------------------------------
 
-  /**
-   * Extract named frames from tileset_new.png (1024×1024) for use as sprites.
-   * Coordinates are approximate regions of each element in the AI-generated image.
-   */
   extractDecoFrames() {
     const tex = this.textures.get('tileset_new');
-    // Pillar/column (right side of row 3-4, gray metal)
-    tex.add('deco_pillar', 0, 878, 170, 146, 500);
-    // Red vending machine (row 3 left)
-    tex.add('deco_vending_red', 0, 0, 292, 256, 240);
-    // Blue vending machine (row 3 middle)
-    tex.add('deco_vending_blue', 0, 256, 292, 256, 240);
-    // Trash can (row 3)
-    tex.add('deco_trash', 0, 512, 320, 100, 190);
-    // Bench (row 3-4)
-    tex.add('deco_bench', 0, 614, 340, 260, 120);
-    // Zcash graffiti wall tile (row 2 right)
-    tex.add('deco_graffiti', 0, 780, 170, 100, 120);
-    // Concrete wall section (row 2)
-    tex.add('deco_wall', 0, 0, 170, 170, 120);
-    // Brick wall section (row 2)
-    tex.add('deco_brick', 0, 512, 170, 268, 120);
+    // Floor tiles (row 0) — degraded white with grout
+    tex.add('floor_1', 0, 4, 4, 162, 162);
+    tex.add('floor_2', 0, 172, 4, 162, 162);
+    tex.add('floor_3', 0, 340, 4, 162, 162);
+    tex.add('floor_4', 0, 510, 4, 162, 162);
+    // Yellow tactile tile
+    tex.add('tactile', 0, 685, 4, 165, 162);
+    // Concrete wall
+    tex.add('wall_concrete', 0, 4, 174, 162, 112);
+    // Brick wall
+    tex.add('wall_brick', 0, 516, 174, 126, 112);
+    tex.add('wall_brick2', 0, 646, 174, 126, 112);
+    // Graffiti wall
+    tex.add('wall_graffiti', 0, 780, 174, 100, 112);
+    // Metal pillar
+    tex.add('pillar', 0, 882, 174, 140, 460);
+    // Red vending machine
+    tex.add('vending_red', 0, 4, 296, 248, 230);
+    // Blue vending machine
+    tex.add('vending_blue', 0, 260, 296, 248, 230);
+    // Trash can
+    tex.add('trash', 0, 516, 310, 96, 200);
+    // Bench (upper)
+    tex.add('bench', 0, 618, 346, 254, 112);
+    // Track/gravel
+    tex.add('gravel', 0, 4, 636, 162, 138);
+    tex.add('track_rail', 0, 340, 636, 340, 138);
+    // Hazard stripe
+    tex.add('hazard', 0, 4, 784, 162, 96);
+    // Dark tunnel wall
+    tex.add('tunnel_dark', 0, 512, 928, 170, 92);
   }
 
   // ---------------------------------------------------------------------------
-  // Skyline — visible only through station "windows" in upper portion
+  // Code-based collision grid (replaces Tiled tilemap)
   // ---------------------------------------------------------------------------
 
-  createSkyline() {
-    // The skyline covers only the top section (rows 0-7 = 0 to 192px at 2x scale)
-    const skylineHeight = 8 * 12 * this.scaleFactor; // 192px
+  buildGrid() {
+    this.grid = [];
+    for (let y = 0; y < this.ROWS; y++) {
+      const row = [];
+      for (let x = 0; x < this.COLS; x++) {
+        let collides = true; // default: not walkable
 
-    const skyline = this.add.image(0, 0, 'skyline');
-    skyline.setOrigin(0, 0);
-    skyline.setDepth(1);
+        // Platform floor (walkable)
+        if (y >= 19 && y <= 33 && x >= 1 && x <= 43) {
+          collides = false;
+        }
 
-    // Scale to fill width, shift up to show building midsections
-    const scaleX = 1080 / skyline.width;
-    skyline.setScale(scaleX);
+        // Door gaps in hazard line (walkable paths to train)
+        if (y === 18) {
+          for (const door of this.doorPositions) {
+            if (Math.abs(x - door.x) <= 1) collides = false;
+          }
+        }
 
-    // Crop vertically to only show within the skyline zone
-    const cropH = Math.floor(skylineHeight / scaleX);
-    // Show the lower-middle portion of the image (skip rooftops)
-    const cropY = Math.floor(skyline.height * 0.3);
-    skyline.setCrop(0, cropY, skyline.width, cropH);
-    skyline.setY(0);
+        // Furniture collision zones (NPCs walk around these)
+        // Vending machines (left side)
+        if (y >= 19 && y <= 22 && x >= 1 && x <= 5) collides = true;
+        // Bench (right side)
+        if (y >= 19 && y <= 21 && x >= 38 && x <= 43) collides = true;
 
-    // Twinkling stars
-    for (let i = 0; i < 12; i++) {
-      const x = Math.random() * 1080;
-      const y = Math.random() * skylineHeight * 0.5;
-      const star = this.add.circle(x, y, Math.random() < 0.3 ? 2 : 1, 0xffffff, 0.8);
-      star.setDepth(2);
+        row.push({ x, y, collides });
+      }
+      this.grid.push(row);
+    }
+  }
+
+  /** Convert world X to tile X */
+  worldToTileX(wx) { return Math.floor(wx / this.TILE); }
+  /** Convert world Y to tile Y */
+  worldToTileY(wy) { return Math.floor(wy / this.TILE); }
+  /** Convert tile X to world X */
+  tileToWorldX(tx) { return tx * this.TILE; }
+  /** Convert tile Y to world Y */
+  tileToWorldY(ty) { return ty * this.TILE; }
+
+  // ---------------------------------------------------------------------------
+  // Scene rendering
+  // ---------------------------------------------------------------------------
+
+  renderBackground() {
+    const g = this.add.graphics();
+    g.fillStyle(0x0e0f18, 1);
+    g.fillRect(0, 0, 1080, 840);
+    g.setDepth(0);
+  }
+
+  renderSkyline() {
+    const T = this.TILE;
+    const openLeft = this.wallLeftEnd * T;     // 168
+    const openRight = this.wallRightStart * T; // 912
+    const openWidth = openRight - openLeft;    // 744
+    const skyH = 8 * T; // 192
+
+    const sky = this.add.image(openLeft, 0, 'skyline');
+    sky.setOrigin(0, 0);
+    sky.setDepth(1);
+
+    // Scale to fill the opening width, then crop to show neon city portion
+    const scaleX = openWidth / sky.width;
+    sky.setScale(scaleX);
+
+    // Show the vibrant midsection (buildings with neon signs + Zcash logos)
+    const cropY = Math.floor(sky.height * 0.20); // show neon-heavy building area
+    const cropH = Math.floor(skyH / scaleX);
+    sky.setCrop(0, cropY, sky.width, cropH);
+
+    // Twinkling stars in the skyline area
+    for (let i = 0; i < 10; i++) {
+      const sx = openLeft + Math.random() * openWidth;
+      const sy = Math.random() * skyH * 0.4;
+      const star = this.add.circle(sx, sy, Math.random() < 0.3 ? 2 : 1, 0xffffff, 0.7);
+      star.setDepth(1);
       this.tweens.add({
-        targets: star,
-        alpha: { from: 0.3, to: 1 },
+        targets: star, alpha: { from: 0.2, to: 1 },
         duration: 1500 + Math.random() * 2000,
-        yoyo: true, repeat: -1,
-        delay: Math.random() * 3000,
+        yoyo: true, repeat: -1, delay: Math.random() * 3000,
         ease: 'Stepped', easeParams: [2],
       });
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Pillars — station columns that partially cover the skyline for depth
-  // ---------------------------------------------------------------------------
+  renderStationWalls() {
+    const T = this.TILE;
+    const skyH = 8 * T;
+    const wallColor = 0x1a1b2e;
+    const wallAccent = 0x252640;
 
-  createPillars() {
-    const skylineHeight = 8 * 12 * this.scaleFactor; // 192px
-    const pillarScale = 0.5;
-    const pillarSpacing = 135; // pixels between pillars
+    // Left wall
+    const gLeft = this.add.graphics();
+    gLeft.fillStyle(wallColor, 1);
+    gLeft.fillRect(0, 0, this.wallLeftEnd * T, skyH);
+    gLeft.setDepth(2);
 
-    for (let px = 0; px < 1080; px += pillarSpacing) {
-      const pillar = this.add.image(px, 0, 'tileset_new', 'deco_pillar');
-      pillar.setOrigin(0, 0);
-      pillar.setScale(pillarScale);
-      pillar.setDepth(3);
-      // Crop to skyline height
-      const maxH = Math.floor(skylineHeight / pillarScale);
-      pillar.setCrop(0, 0, pillar.width, Math.min(pillar.height, maxH));
+    // Right wall
+    const gRight = this.add.graphics();
+    gRight.fillStyle(wallColor, 1);
+    gRight.fillRect(this.wallRightStart * T, 0, (this.COLS - this.wallRightStart) * T, skyH);
+    gRight.setDepth(2);
+
+    // Wall edge accents (thin lines framing the opening)
+    const gEdge = this.add.graphics();
+    gEdge.fillStyle(wallAccent, 1);
+    gEdge.fillRect(this.wallLeftEnd * T - 4, 0, 8, skyH);
+    gEdge.fillRect(this.wallRightStart * T - 4, 0, 8, skyH);
+    gEdge.setDepth(3);
+
+    // Pillar sprites on walls for detail
+    const pillarScale = 0.32;
+    const pillarPositions = [1, 4, this.COLS - 5, this.COLS - 2];
+    for (const px of pillarPositions) {
+      const p = this.add.image(px * T, 0, 'tileset_new', 'pillar');
+      p.setOrigin(0, 0).setScale(pillarScale).setDepth(3);
+      const maxH = Math.floor(skyH / pillarScale);
+      p.setCrop(0, 0, p.width, Math.min(p.height, maxH));
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Decorative furniture from the new tileset
-  // ---------------------------------------------------------------------------
+  renderWallBelow() {
+    const T = this.TILE;
+    const wallY = 8 * T;   // 192
+    const wallH = 4 * T;   // 96
+    const tileW = 162;
+
+    // Tile the concrete wall using tileset_new sprites
+    const wallScale = (T * 2) / tileW; // scale tiles to ~2 tile widths
+    for (let x = 0; x < 1080; x += Math.floor(tileW * wallScale)) {
+      // Alternate concrete and brick
+      const frameKey = (x / Math.floor(tileW * wallScale)) % 3 === 1 ? 'wall_brick' : 'wall_concrete';
+      const wt = this.add.image(x, wallY, 'tileset_new', frameKey);
+      wt.setOrigin(0, 0).setScale(wallScale, wallH / 112).setDepth(4);
+    }
+
+    // Graffiti overlays on the wall
+    const grafScale = 0.5;
+    const graf1 = this.add.image(12 * T, wallY + 10, 'tileset_new', 'wall_graffiti');
+    graf1.setOrigin(0, 0).setScale(grafScale).setDepth(4);
+    const graf2 = this.add.image(30 * T, wallY + 10, 'tileset_new', 'wall_graffiti');
+    graf2.setOrigin(0, 0).setScale(grafScale).setDepth(4);
+  }
+
+  renderTracks() {
+    const T = this.TILE;
+    const trackY = 12 * T;  // 288
+    const trackH = 5 * T;   // 120
+
+    // Gravel base
+    const gravelScale = trackH / 138;
+    for (let x = 0; x < 1080; x += Math.floor(162 * gravelScale * 1.2)) {
+      const frameKey = Math.random() < 0.5 ? 'gravel' : 'track_rail';
+      const gt = this.add.image(x, trackY, 'tileset_new', frameKey);
+      gt.setOrigin(0, 0);
+      gt.setDisplaySize(Math.floor(162 * gravelScale * 1.2), trackH);
+      gt.setDepth(5);
+    }
+
+    // Rail lines (steel gray)
+    const gRails = this.add.graphics();
+    gRails.lineStyle(3, 0x888898, 1);
+    gRails.moveTo(0, trackY + trackH * 0.35).lineTo(1080, trackY + trackH * 0.35);
+    gRails.moveTo(0, trackY + trackH * 0.65).lineTo(1080, trackY + trackH * 0.65);
+    gRails.strokePath();
+    gRails.setDepth(5);
+  }
+
+  renderHazardLine() {
+    const T = this.TILE;
+    const hazardY = 17 * T; // 408
+    const tactileY = 18 * T; // 432
+
+    // Hazard stripe using tileset_new
+    const hScale = T / 96;
+    for (let x = 0; x < 1080; x += Math.floor(162 * hScale)) {
+      // Skip door gaps
+      const tileX = Math.floor(x / T);
+      let isDoor = false;
+      for (const door of this.doorPositions) {
+        if (Math.abs(tileX - door.x) <= 1) isDoor = true;
+      }
+      if (isDoor) continue;
+
+      const h = this.add.image(x, hazardY, 'tileset_new', 'hazard');
+      h.setOrigin(0, 0).setDisplaySize(Math.floor(162 * hScale), T).setDepth(6);
+    }
+
+    // Tactile strip using tileset_new yellow tile
+    const tScale = T / 162;
+    for (let x = 0; x < 1080; x += Math.floor(162 * tScale)) {
+      const tileX = Math.floor(x / T);
+      let isDoor = false;
+      for (const door of this.doorPositions) {
+        if (Math.abs(tileX - door.x) <= 1) isDoor = true;
+      }
+      if (isDoor) continue;
+
+      const tt = this.add.image(x, tactileY, 'tileset_new', 'tactile');
+      tt.setOrigin(0, 0).setDisplaySize(Math.floor(162 * tScale), T).setDepth(6);
+    }
+  }
+
+  renderPlatformFloor() {
+    const T = this.TILE;
+    const floorY = 19 * T; // 456
+    const floorH = 15 * T; // 360 (rows 19-33)
+    const floorFrames = ['floor_1', 'floor_2', 'floor_3', 'floor_4'];
+    const tileSize = T * 2; // each floor tile covers 2x2 game tiles
+
+    for (let y = floorY; y < floorY + floorH; y += tileSize) {
+      for (let x = 0; x < 1080; x += tileSize) {
+        const frame = floorFrames[((x / tileSize | 0) + (y / tileSize | 0)) % 4];
+        const ft = this.add.image(x, y, 'tileset_new', frame);
+        ft.setOrigin(0, 0).setDisplaySize(tileSize, tileSize).setDepth(7);
+      }
+    }
+
+    // Grout accent lines (yellow grid every ~5 tiles like in the design)
+    const gGrout = this.add.graphics();
+    gGrout.lineStyle(1, 0xd4c85a, 0.15);
+    for (let x = 0; x < 1080; x += T * 5) {
+      gGrout.moveTo(x, floorY).lineTo(x, floorY + floorH);
+    }
+    for (let y = floorY; y < floorY + floorH; y += T * 5) {
+      gGrout.moveTo(0, y).lineTo(1080, y);
+    }
+    gGrout.strokePath();
+    gGrout.setDepth(8);
+  }
 
   placeFurniture() {
-    const s = this.scaleFactor;
-    const furnitureDepth = 15;
-    const furnitureScale = 0.35;
+    const T = this.TILE;
+    const fDepth = 15;
+    const s = 0.3;
 
-    // Red vending machine — left wall area
-    const vm1 = this.add.image(2 * 12 * s, 23.5 * 12 * s, 'tileset_new', 'deco_vending_red');
-    vm1.setOrigin(0, 0).setScale(furnitureScale).setDepth(furnitureDepth);
+    // Red vending machine
+    const vm1 = this.add.image(1.5 * T, 19 * T, 'tileset_new', 'vending_red');
+    vm1.setOrigin(0, 0).setScale(s).setDepth(fDepth);
 
-    // Blue vending machine — next to red
-    const vm2 = this.add.image(6 * 12 * s, 23.5 * 12 * s, 'tileset_new', 'deco_vending_blue');
-    vm2.setOrigin(0, 0).setScale(furnitureScale).setDepth(furnitureDepth);
+    // Blue vending machine
+    const vm2 = this.add.image(5 * T, 19 * T, 'tileset_new', 'vending_blue');
+    vm2.setOrigin(0, 0).setScale(s).setDepth(fDepth);
 
-    // Bench — right side
-    const bench = this.add.image(35 * 12 * s, 24 * 12 * s, 'tileset_new', 'deco_bench');
-    bench.setOrigin(0, 0).setScale(furnitureScale).setDepth(furnitureDepth);
+    // Trash can
+    const trash = this.add.image(8.5 * T, 20 * T, 'tileset_new', 'trash');
+    trash.setOrigin(0, 0).setScale(s * 0.7).setDepth(fDepth);
 
-    // Trash can — near vending machines
-    const trash = this.add.image(10 * 12 * s, 24 * 12 * s, 'tileset_new', 'deco_trash');
-    trash.setOrigin(0, 0).setScale(furnitureScale * 0.8).setDepth(furnitureDepth);
-
-    // Graffiti on wall — above platform, between pillars
-    const graf1 = this.add.image(14 * 12 * s, 9 * 12 * s, 'tileset_new', 'deco_graffiti');
-    graf1.setOrigin(0, 0).setScale(furnitureScale).setDepth(6); // above tilemap wall
-
-    const graf2 = this.add.image(30 * 12 * s, 9 * 12 * s, 'tileset_new', 'deco_graffiti');
-    graf2.setOrigin(0, 0).setScale(furnitureScale).setDepth(6);
+    // Bench (right side)
+    const bench = this.add.image(38 * T, 19.5 * T, 'tileset_new', 'bench');
+    bench.setOrigin(0, 0).setScale(s).setDepth(fDepth);
   }
 
   // ---------------------------------------------------------------------------
-  // Main update loop
+  // Update loop
   // ---------------------------------------------------------------------------
 
   update(time, _delta) {
@@ -260,35 +402,27 @@ class MainScene extends Phaser.Scene {
     if (!this.dataLock) this.pollServer();
   }
 
-  // ---------------------------------------------------------------------------
-  // Wandering
-  // ---------------------------------------------------------------------------
-
   updateWandering(time) {
     const pb = this.platformBounds;
     for (const npc of this.npcs) {
-      if (this.blured) break;
-      if (npc.isDestroyed) continue;
+      if (this.blured || npc.isDestroyed) continue;
       if (Math.random() < 0.2) continue;
-
       if (!npc.nextMoveAt) npc.nextMoveAt = time + Phaser.Math.Between(2000, 6000);
       if (time < npc.nextMoveAt) continue;
       npc.nextMoveAt = time + Phaser.Math.Between(1500, 7000);
 
       if (!npc.isPlaying && npc.canWander) {
-        const startX = this.map.worldToTileX(npc.x);
-        const startY = this.map.worldToTileY(npc.y);
+        const startX = this.worldToTileX(npc.x);
+        const startY = this.worldToTileY(npc.y);
         const dx = Phaser.Math.Between(-6, 6);
         const dy = Phaser.Math.Between(-3, 3);
-        const posx = Phaser.Math.Clamp(startX + dx, pb.minX, pb.maxX);
-        const posy = Phaser.Math.Clamp(startY + dy, pb.minY, pb.maxY);
+        const px = Phaser.Math.Clamp(startX + dx, pb.minX, pb.maxX);
+        const py = Phaser.Math.Clamp(startY + dy, pb.minY, pb.maxY);
 
         const start = this.grid[startY] && this.grid[startY][startX];
-        const goal = this.grid[posy] && this.grid[posy][posx];
+        const goal = this.grid[py] && this.grid[py][px];
         if (!start || !goal) continue;
-
-        const path = bfs(start, goal, this.grid);
-        npc.moveAlongPath(path, false);
+        npc.moveAlongPath(bfs(start, goal, this.grid), false);
       }
     }
   }
@@ -301,14 +435,11 @@ class MainScene extends Phaser.Scene {
     this.dataLock = true;
     try {
       const [mempoolRes, blockRes] = await Promise.all([
-        http.get('/mempool'),
-        http.get('/latestblock'),
+        http.get('/mempool'), http.get('/latestblock'),
       ]);
-      const mempool = mempoolRes.data;
-      const latestHeight = blockRes.data.height;
-      await this.spawnNewTransactions(mempool);
-      if (latestHeight > this.currHeight) {
-        this.currHeight = latestHeight;
+      await this.spawnNewTransactions(mempoolRes.data);
+      if (blockRes.data.height > this.currHeight) {
+        this.currHeight = blockRes.data.height;
         await this.handleNewBlock();
       }
     } catch (err) {
@@ -318,66 +449,47 @@ class MainScene extends Phaser.Scene {
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Spawning
-  // ---------------------------------------------------------------------------
-
   async spawnNewTransactions(mempool) {
+    const T = this.TILE;
     const pb = this.platformBounds;
-    const s = this.scaleFactor;
 
     for (const tx of mempool) {
-      if (this.npcs.some((npc) => npc.txid === tx.txid)) continue;
-
+      if (this.npcs.some((n) => n.txid === tx.txid)) continue;
       const startTile = this.grid[this.spawnTile.y] && this.grid[this.spawnTile.y][this.spawnTile.x];
       if (!startTile) continue;
 
-      let targetX = Math.floor(pb.minX + Math.random() * (pb.maxX - pb.minX));
-      let targetY = Math.floor(pb.minY + Math.random() * (pb.maxY - pb.minY));
+      let targetX = pb.minX + Math.floor(Math.random() * (pb.maxX - pb.minX));
+      let targetY = pb.minY + Math.floor(Math.random() * (pb.maxY - pb.minY));
 
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const cx = Math.floor(pb.minX + Math.random() * (pb.maxX - pb.minX));
-        const cy = Math.floor(pb.minY + Math.random() * (pb.maxY - pb.minY));
-        const ok = this.npcs.every((n) => {
-          const dxPx = n.x - this.map.tileToWorldX(cx);
-          const dyPx = n.y - this.map.tileToWorldY(cy);
-          return Math.sqrt(dxPx * dxPx + dyPx * dyPx) >= 32;
-        });
-        if (ok) { targetX = cx; targetY = cy; break; }
+      for (let a = 0; a < 10; a++) {
+        const cx = pb.minX + Math.floor(Math.random() * (pb.maxX - pb.minX));
+        const cy = pb.minY + Math.floor(Math.random() * (pb.maxY - pb.minY));
+        if (this.npcs.every((n) => {
+          const dx = n.x - cx * T; const dy = n.y - cy * T;
+          return Math.sqrt(dx * dx + dy * dy) >= 32;
+        })) { targetX = cx; targetY = cy; break; }
       }
 
       const goal = this.grid[targetY] && this.grid[targetY][targetX];
       if (!goal) continue;
 
       try {
-        const txInfoRes = await http.get(`/txinfo/?txid=${tx.txid}`);
-        if (txInfoRes.data.height >= 0 && !txInfoRes.data.error) continue;
+        const r = await http.get(`/txinfo/?txid=${tx.txid}`);
+        if (r.data.height >= 0 && !r.data.error) continue;
       } catch { continue; }
 
       const path = bfs(startTile, goal, this.grid);
-      const npc = new NPC(
-        this, tx,
-        this.map.tileToWorldX(this.spawnTile.x),
-        this.map.tileToWorldY(this.spawnTile.y),
-        s
-      );
+      const npc = new NPC(this, tx, this.spawnTile.x * T, this.spawnTile.y * T, this.scaleFactor);
       this.npcs.push(npc);
 
       if (!this.blured) {
         npc.moveAlongPath(path, false);
       } else {
-        npc.setX(targetX * 12 * s);
-        npc.setY(targetY * 12 * s);
-        npc.canWander = true;
+        npc.setX(targetX * T); npc.setY(targetY * T); npc.canWander = true;
       }
     }
-
     zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
   }
-
-  // ---------------------------------------------------------------------------
-  // Block handling
-  // ---------------------------------------------------------------------------
 
   async handleNewBlock() {
     if (this.blockProcessing) return;
@@ -385,16 +497,14 @@ class MainScene extends Phaser.Scene {
 
     const minedNpcs = [];
     const keptNpcs = [];
-
     for (const npc of this.npcs) {
       if (npc.isDestroyed) continue;
       try {
-        const res = await http.get(`/txinfo/?txid=${npc.txid}`);
-        if (res.data.height > 0) minedNpcs.push(npc);
+        const r = await http.get(`/txinfo/?txid=${npc.txid}`);
+        if (r.data.height > 0) minedNpcs.push(npc);
         else keptNpcs.push(npc);
       } catch { keptNpcs.push(npc); }
     }
-
     this.npcs = keptNpcs;
 
     if (minedNpcs.length === 0) {
@@ -404,34 +514,27 @@ class MainScene extends Phaser.Scene {
       return;
     }
 
-    let boardedCount = 0;
-    const totalBoarding = minedNpcs.length;
-
-    const onNpcBoarded = () => {
-      boardedCount++;
+    let boarded = 0;
+    const total = minedNpcs.length;
+    const onBoarded = () => {
+      boarded++;
       zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
-      if (boardedCount >= totalBoarding) {
-        console.log(`All ${totalBoarding} passengers boarded. Departing!`);
-        this.train.depart();
-      }
+      if (boarded >= total) this.train.depart();
     };
 
     for (const npc of minedNpcs) {
       npc.canWander = false;
       npc.stopCurrentTween();
+      if (this.blured) { npc.cleanup(); onBoarded(); continue; }
 
-      if (this.blured) { npc.cleanup(); onNpcBoarded(); continue; }
+      const sx = this.worldToTileX(npc.x);
+      const sy = this.worldToTileY(npc.y);
+      const start = this.grid[sy] && this.grid[sy][sx];
+      if (!start) { npc.cleanup(); onBoarded(); continue; }
 
-      const startX = this.map.worldToTileX(npc.x);
-      const startY = this.map.worldToTileY(npc.y);
-      const start = this.grid[startY] && this.grid[startY][startX];
-
-      if (!start) { npc.cleanup(); onNpcBoarded(); continue; }
-
-      const pathToTrain = bfsClosestDoor(start, this.doorPositions, this.grid);
-      if (pathToTrain.length === 0) { npc.cleanup(); onNpcBoarded(); continue; }
-
-      npc.moveAlongPath(pathToTrain, true, () => { onNpcBoarded(); });
+      const path = bfsClosestDoor(start, this.doorPositions, this.grid);
+      if (!path.length) { npc.cleanup(); onBoarded(); continue; }
+      npc.moveAlongPath(path, true, onBoarded);
     }
 
     zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
