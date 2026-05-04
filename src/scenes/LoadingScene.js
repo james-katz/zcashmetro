@@ -13,9 +13,12 @@ class LoadingScene extends Phaser.Scene {
   }
 
   preload() {
-    // Tileset and tilemap
+    // Tileset and tilemap (original tileset for collision grid)
     this.load.image('tileset', './assets/tileset.png');
     this.load.tilemapTiledJSON('map', './assets/station.json');
+
+    // New tileset for decorative sprites (vending machines, bench, pillar, graffiti)
+    this.load.image('tileset_new', './assets/tileset_new.png');
 
     // Skyline background
     this.load.image('skyline', './assets/skyline.png');

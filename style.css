@@ -134,7 +134,7 @@ body {
   width: 100%;
   height: calc(100vh - 60px);
   overflow: hidden;
-  background: var(--zm-floor);
+  background: #000;
 }
 #game-container canvas {
   display: block;
