@@ -1,13 +1,19 @@
 import Phaser from 'phaser';
 import NPC from '../objects/npc';
 import Train from '../objects/train';
-import Sign from '../objects/sign';
 import http from '../http-common';
-import { bfs } from '../pathfinding';
+import { bfs, bfsClosestDoor } from '../pathfinding';
+import zmEvents from '../events';
 
 /**
  * MainScene — the train station where zebras (transactions) wander
  * on the platform and board the train (block) when mined.
+ *
+ * Visual layers (by depth):
+ *   0  — Skyline background image
+ *   5  — Tilemap (station platform, tunnel, tracks)
+ *  10  — Train sprite (in the tunnel area)
+ *  22  — NPCs (zebras on the platform)
  */
 class MainScene extends Phaser.Scene {
   constructor() {
@@ -30,6 +36,32 @@ class MainScene extends Phaser.Scene {
 
     /** @type {boolean} Whether the browser tab is hidden. */
     this.blured = false;
+
+    /**
+     * The 4 train door tile positions.
+     * NPCs walk to the closest door when boarding.
+     * @type {{ x: number, y: number }[]}
+     */
+    this.doorPositions = [
+      { x: 6, y: 11 },
+      { x: 18, y: 11 },
+      { x: 25, y: 11 },
+      { x: 37, y: 11 },
+    ];
+
+    /**
+     * Walkable platform bounds (tile coordinates).
+     * NPCs wander within these bounds.
+     */
+    this.platformBounds = {
+      minX: 1,
+      maxX: 43,
+      minY: 16,
+      maxY: 27,
+    };
+
+    /** Spawn point for new NPCs (bottom-center escalator area) */
+    this.spawnTile = { x: 22, y: 27 };
   }
 
   init(data) {
@@ -48,12 +80,17 @@ class MainScene extends Phaser.Scene {
     const mapWidthInPixels = mapWidth * tileWidth;
     this.scaleFactor = canvasWidth / mapWidthInPixels;
 
+    // --- Layer 0: Skyline background ---
+    this.createSkyline();
+
+    // --- Layer 5: Tilemap ---
     this.map = this.make.tilemap({ key: 'map' });
     const tileset = this.map.addTilesetImage('subway', 'tileset');
     const layer = this.map.createLayer(0, tileset);
 
     layer.setScale(this.scaleFactor);
     layer.setCollisionByProperty({ collides: true });
+    layer.setDepth(5);
 
     this.physics.world.setBounds(
       0, 0,
@@ -61,7 +98,7 @@ class MainScene extends Phaser.Scene {
       true, true, true, true
     );
 
-    // Train (the block)
+    // --- Layer 10: Train ---
     this.train = new Train(
       this,
       22 * this.map.tileWidth * this.scaleFactor,
@@ -71,7 +108,7 @@ class MainScene extends Phaser.Scene {
     );
     this.physics.add.collider(this.train, layer);
 
-    // Build the navigation grid from the tilemap
+    // --- Build navigation grid from tilemap ---
     this.grid = [];
     for (let y = 0; y < this.map.height; y++) {
       const row = [];
@@ -82,30 +119,21 @@ class MainScene extends Phaser.Scene {
       this.grid.push(row);
     }
 
-    // Spawn initial mempool NPCs
+    // --- Spawn initial mempool NPCs ---
     for (const tx of this.npcData) {
-      const posx = (2 + Math.random() * 41) * this.map.tileWidth * this.scaleFactor;
-      const posy = (16 + Math.random() * 8) * this.map.tileHeight * this.scaleFactor;
+      const pb = this.platformBounds;
+      const posx = (pb.minX + Math.random() * (pb.maxX - pb.minX)) * this.map.tileWidth * this.scaleFactor;
+      const posy = (pb.minY + Math.random() * (pb.maxY - pb.minY)) * this.map.tileHeight * this.scaleFactor;
       const npc = new NPC(this, tx, posx, posy, this.scaleFactor);
       npc.canWander = true;
       this.npcs.push(npc);
     }
 
-    // Station signs
-    this.heightSign = new Sign(
-      this,
-      7 * this.map.tileWidth * this.scaleFactor,
-      3 * this.map.tileWidth * this.scaleFactor,
-      `Current block\n${this.currHeight}`,
-      this.scaleFactor
-    );
-    this.mempoolSign = new Sign(
-      this,
-      38 * this.map.tileWidth * this.scaleFactor,
-      3 * this.map.tileWidth * this.scaleFactor,
-      `In mempool\n${this.npcs.length}`,
-      this.scaleFactor
-    );
+    // Send initial stats to HTML navbar
+    zmEvents.emit('stats', {
+      height: this.currHeight,
+      mempool: this.npcs.length,
+    });
 
     this.enableCameraScrolling();
 
@@ -117,6 +145,61 @@ class MainScene extends Phaser.Scene {
     this.game.events.on('focus', () => {
       this.blured = false;
     }, this);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Skyline background
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Render the AI-generated skyline as a background image at depth 0.
+   */
+  createSkyline() {
+    const skyline = this.add.image(0, 0, 'skyline');
+    skyline.setOrigin(0, 0);
+    skyline.setDepth(0);
+
+    // Scale to fill the canvas width, maintain aspect ratio
+    const canvasWidth = this.game.config.width;
+    const imgWidth = skyline.width;
+    const imgHeight = skyline.height;
+    const scaleX = canvasWidth / imgWidth;
+
+    skyline.setScale(scaleX);
+
+    // Position at the top of the scene
+    skyline.setY(0);
+
+    // Add twinkling star overlay
+    this.createStars(canvasWidth, imgHeight * scaleX);
+  }
+
+  /**
+   * Create subtle twinkling star points in the skyline area.
+   */
+  createStars(width, height) {
+    const starCount = 20;
+    for (let i = 0; i < starCount; i++) {
+      const x = Math.random() * width;
+      const y = Math.random() * height * 0.4; // upper portion only
+      const size = Math.random() < 0.3 ? 2 : 1;
+      const color = Math.random() < 0.2 ? 0xfde47a : 0xffffff;
+
+      const star = this.add.circle(x, y, size, color, 0.8);
+      star.setDepth(1);
+
+      // Twinkle animation
+      this.tweens.add({
+        targets: star,
+        alpha: { from: 0.3, to: 1 },
+        duration: 1500 + Math.random() * 2000,
+        yoyo: true,
+        repeat: -1,
+        delay: Math.random() * 3000,
+        ease: 'Stepped',
+        easeParams: [2],
+      });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -145,6 +228,7 @@ class MainScene extends Phaser.Scene {
    * @param {number} time  Current game time in ms
    */
   updateWandering(time) {
+    const pb = this.platformBounds;
     for (const npc of this.npcs) {
       if (this.blured) break;
       if (npc.isDestroyed) continue;
@@ -162,8 +246,8 @@ class MainScene extends Phaser.Scene {
         const dx = Phaser.Math.Between(-6, 6);
         const dy = Phaser.Math.Between(-3, 3);
 
-        const posx = Phaser.Math.Clamp(startX + dx, 1, 44);
-        const posy = Phaser.Math.Clamp(startY + dy, 16, 27);
+        const posx = Phaser.Math.Clamp(startX + dx, pb.minX, pb.maxX);
+        const posy = Phaser.Math.Clamp(startY + dy, pb.minY, pb.maxY);
 
         const start = this.grid[startY] && this.grid[startY][startX];
         const goal = this.grid[posy] && this.grid[posy][posx];
@@ -220,22 +304,22 @@ class MainScene extends Phaser.Scene {
    * @param {{ txid: string, type: string }[]} mempool  Current mempool from server
    */
   async spawnNewTransactions(mempool) {
+    const pb = this.platformBounds;
+
     for (const tx of mempool) {
       // Skip if we already have this NPC
       if (this.npcs.some((npc) => npc.txid === tx.txid)) continue;
 
-      const spawnTileX = 22;
-      const spawnTileY = 62;
-      const start = this.grid[spawnTileY] && this.grid[spawnTileY][spawnTileX];
-      if (!start) continue;
+      const startTile = this.grid[this.spawnTile.y] && this.grid[this.spawnTile.y][this.spawnTile.x];
+      if (!startTile) continue;
 
-      // Find a non-overlapping target tile
-      let targetX = Math.floor(Math.random() * 44);
-      let targetY = Math.floor(Math.random() * 12) + 16;
+      // Find a non-overlapping target tile on the platform
+      let targetX = Math.floor(pb.minX + Math.random() * (pb.maxX - pb.minX));
+      let targetY = Math.floor(pb.minY + Math.random() * (pb.maxY - pb.minY));
 
       for (let attempt = 0; attempt < 10; attempt++) {
-        const candidateX = Math.floor(Math.random() * 44);
-        const candidateY = Math.floor(Math.random() * 12) + 16;
+        const candidateX = Math.floor(pb.minX + Math.random() * (pb.maxX - pb.minX));
+        const candidateY = Math.floor(pb.minY + Math.random() * (pb.maxY - pb.minY));
 
         const ok = this.npcs.every((n) => {
           const dxPx = n.x - this.map.tileToWorldX(candidateX);
@@ -257,20 +341,19 @@ class MainScene extends Phaser.Scene {
       try {
         const txInfoRes = await http.get(`/txinfo/?txid=${tx.txid}`);
         if (txInfoRes.data.height >= 0 && !txInfoRes.data.error) {
-          // Already mined or invalid, skip
           continue;
         }
       } catch {
         continue;
       }
 
-      const path = bfs(start, goal, this.grid);
+      const path = bfs(startTile, goal, this.grid);
 
       const npc = new NPC(
         this,
         tx,
-        this.map.tileToWorldX(spawnTileX),
-        this.map.tileToWorldY(spawnTileY),
+        this.map.tileToWorldX(this.spawnTile.x),
+        this.map.tileToWorldY(this.spawnTile.y),
         this.scaleFactor
       );
       this.npcs.push(npc);
@@ -284,7 +367,11 @@ class MainScene extends Phaser.Scene {
       }
     }
 
-    this.mempoolSign.updateText(`In mempool\n${this.npcs.length}`);
+    // Update navbar stats
+    zmEvents.emit('stats', {
+      height: this.currHeight,
+      mempool: this.npcs.length,
+    });
   }
 
   // ---------------------------------------------------------------------------
@@ -294,7 +381,7 @@ class MainScene extends Phaser.Scene {
   /**
    * Handle a newly mined block:
    * 1. Query each NPC to see if its tx was mined
-   * 2. Animate mined NPCs walking to the train
+   * 2. Animate mined NPCs walking to the nearest train door
    * 3. Wait for ALL boarding animations to complete
    * 4. Only THEN depart the train
    */
@@ -317,7 +404,6 @@ class MainScene extends Phaser.Scene {
           keptNpcs.push(npc);
         }
       } catch {
-        // On error, keep the NPC
         keptNpcs.push(npc);
       }
     }
@@ -326,23 +412,20 @@ class MainScene extends Phaser.Scene {
     this.npcs = keptNpcs;
 
     if (minedNpcs.length === 0) {
-      // Empty block (or all txs were already removed) — train still departs
       console.log('Train leaving with no passengers!');
       this.train.depart();
-      this.heightSign.updateText(`Current height\n${this.currHeight}`);
-      this.mempoolSign.updateText(`In mempool\n${this.npcs.length}`);
+      zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
       this.blockProcessing = false;
       return;
     }
 
     // --- Boarding sequence ---
-    // Track how many NPCs have finished their boarding animation
     let boardedCount = 0;
     const totalBoarding = minedNpcs.length;
 
     const onNpcBoarded = () => {
       boardedCount++;
-      this.mempoolSign.updateText(`In mempool\n${this.npcs.length}`);
+      zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
 
       if (boardedCount >= totalBoarding) {
         console.log(`All ${totalBoarding} passengers boarded. Departing!`);
@@ -355,41 +438,36 @@ class MainScene extends Phaser.Scene {
       npc.stopCurrentTween();
 
       if (this.blured) {
-        // Tab not visible — skip animation, just clean up
         npc.cleanup();
         onNpcBoarded();
         continue;
       }
 
-      // Calculate path to the nearest train door
+      // Find path to the closest train door
       const startX = this.map.worldToTileX(npc.x);
       const startY = this.map.worldToTileY(npc.y);
       const start = this.grid[startY] && this.grid[startY][startX];
 
-      // Pick the closest of 4 door positions based on NPC's x
-      let doorX = 6;
-      if (startX > 12 && startX <= 21) doorX = 18;
-      else if (startX > 21 && startX <= 30) doorX = 25;
-      else if (startX > 30) doorX = 37;
-
-      const doorY = 11;
-      const goal = this.grid[doorY] && this.grid[doorY][doorX];
-
-      if (!start || !goal) {
-        // Can't pathfind — just clean up
+      if (!start) {
         npc.cleanup();
         onNpcBoarded();
         continue;
       }
 
-      const pathToTrain = bfs(start, goal, this.grid);
+      const pathToTrain = bfsClosestDoor(start, this.doorPositions, this.grid);
+
+      if (pathToTrain.length === 0) {
+        npc.cleanup();
+        onNpcBoarded();
+        continue;
+      }
 
       npc.moveAlongPath(pathToTrain, true, () => {
         onNpcBoarded();
       });
     }
 
-    this.heightSign.updateText(`Current height\n${this.currHeight}`);
+    zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
     this.blockProcessing = false;
   }
 

@@ -6,25 +6,92 @@
   <meta name="description" content="ZcashMetro — a real-time Zcash mempool visualizer. Watch transactions as zebras boarding a train at a pixel-art station.">
   <title>ZcashMetro.io - Zcash mempool visualizer</title>
   <link rel="shortcut icon" href="assets/favicon.png">
-
-  <style>
-    html, body {
-      background-color: black;
-      margin: 0;
-      padding: 0;
-      height: 100%;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      overflow: hidden;
-    }
-
-    canvas {
-      display: block;
-    }
-  </style>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <script type="module" src="main.js"></script>
+
+  <!-- ============ TOP NAVBAR ============ -->
+  <div class="chrome">
+    <div class="brand">
+      <img src="assets/favicon.png" alt="ZcashMetro" class="zm-pixelated">
+      <span>ZCASH<span class="alt">METRO</span></span>
+    </div>
+    <div class="chrome-stats">
+      <div class="chrome-stat">
+        <span class="pulse"></span>
+        <span class="lbl" id="zm-block-label">BLOCK</span>
+        <span class="val" id="zm-block-value">---</span>
+      </div>
+      <div class="chrome-stat">
+        <span class="lbl" id="zm-mempool-label">MEMPOOL</span>
+        <span class="val" id="zm-mempool-value">---</span>
+      </div>
+    </div>
+    <select class="lang-select" id="zm-lang-select"></select>
+  </div>
+
+  <!-- ============ PHASER GAME ============ -->
+  <div id="game-container"></div>
+
+  <!-- ============ TOOLTIP (hover over NPC) ============ -->
+  <div class="zm-tooltip" id="zm-tooltip"></div>
+
+  <!-- ============ INSPECTOR DIALOG (click on NPC) ============ -->
+  <div class="zm-inspector" id="zm-inspector">
+    <div class="inspector-head">
+      <span id="zm-inspector-title">SELECTED TRANSACTION</span>
+      <button class="close-btn" id="zm-inspector-close">✕</button>
+    </div>
+    <div class="inspector-body">
+      <dl>
+        <dt id="zm-inspector-txid-label">TXID</dt>
+        <dd id="zm-inspector-txid">—</dd>
+        <dt id="zm-inspector-type-label">TYPE</dt>
+        <dd id="zm-inspector-type">—</dd>
+        <dt id="zm-inspector-pool-label">POOL</dt>
+        <dd id="zm-inspector-pool">—</dd>
+        <dt id="zm-inspector-seen-label">SEEN</dt>
+        <dd id="zm-inspector-seen">—</dd>
+      </dl>
+      <div class="inspector-actions">
+        <button id="zm-explorer-btn">EXPLORER</button>
+        <button id="zm-copy-btn">COPY ID</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ LEGEND (shield tiers) ============ -->
+  <div class="zm-legend">
+    <div class="legend-title" id="zm-legend-title">SHIELD TIERS</div>
+    <div class="legend-row">
+      <img src="assets/bronze.png" class="zm-pixelated">
+      <span class="lbl" id="zm-legend-bronze">Bronze</span>
+      <span class="meta" id="zm-legend-bronze-desc">shielding · t↔z/o</span>
+    </div>
+    <div class="legend-row">
+      <img src="assets/silver.png" class="zm-pixelated">
+      <span class="lbl" id="zm-legend-silver">Silver</span>
+      <span class="meta" id="zm-legend-silver-desc">partial · z↔o</span>
+    </div>
+    <div class="legend-row">
+      <img src="assets/gold.png" class="zm-pixelated">
+      <span class="lbl" id="zm-legend-gold">Gold</span>
+      <span class="meta" id="zm-legend-gold-desc">fully shielded</span>
+    </div>
+    <div class="legend-row">
+      <span class="swatch" style="background: #e9e9e9;"></span>
+      <span class="lbl" id="zm-legend-nobadge">No badge</span>
+      <span class="meta" id="zm-legend-nobadge-desc">transparent · t→t</span>
+    </div>
+  </div>
+
+  <!-- ============ HELP (controls) ============ -->
+  <div class="zm-help">
+    <div><kbd>SCROLL</kbd><span id="zm-help-scroll">pan camera</span></div>
+    <div><kbd>CLICK</kbd><span id="zm-help-click">open in explorer</span></div>
+    <div><kbd>HOVER</kbd><span id="zm-help-hover">tx details</span></div>
+  </div>
+
+  <script type="module" src="main.js"></script>
 </body>
 </html>

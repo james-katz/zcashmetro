@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import Tooltip from './tooltip';
+import zmEvents from '../events.js';
 
 /**
  * NPC (Zebra) — represents a transaction in the mempool.
@@ -7,10 +7,16 @@ import Tooltip from './tooltip';
  * Each zebra wanders around the station platform until its transaction
  * gets mined into a block, at which point it walks to the train and
  * boards (is destroyed).
+ *
+ * Animations per design guide:
+ * - Body bobbing: 0.6s, 2px vertical, stepped (2 frames)
+ * - Ground shadow: ellipse that pulses with the bob
+ * - Shield float: 2.2s ease-in-out, 2px vertical
+ * - Flip: scaleX based on movement direction
  */
 class NPC extends Phaser.GameObjects.Container {
   /**
-   * @param {Phaser.Scene} scene  The owning scene
+   * @param {Phaser.Scene} scene
    * @param {{ txid: string, type: string }} tx  Transaction data
    * @param {number} x  World x position
    * @param {number} y  World y position
@@ -19,13 +25,8 @@ class NPC extends Phaser.GameObjects.Container {
   constructor(scene, tx, x, y, scl) {
     super(scene, x, y);
 
-    /** @type {boolean} Whether a tween is currently playing on this NPC. */
     this.isPlaying = false;
-
-    /** @type {boolean} Whether this NPC is allowed to wander randomly. */
     this.canWander = false;
-
-    /** @type {boolean} Set to true once destroy() has been called. */
     this.isDestroyed = false;
 
     this.scn = scene;
@@ -50,55 +51,114 @@ class NPC extends Phaser.GameObjects.Container {
       this.typeText = 'Fully Shielded';
     }
 
+    // Ground shadow (drawn first, behind everything)
+    this.shadow = this.scn.add.ellipse(0, 14 * scl, 36 * scl, 4 * scl, 0x000000, 0.5);
+    this.add(this.shadow);
+
     // Zebra sprite
     this.zebra = this.scn.add.sprite(0, 0, 'zebra');
     this.zebra.setDisplaySize(24 * this.scaleFactor, 24 * this.scaleFactor);
     this.add(this.zebra);
 
-    // Shield badge (if shielded tx)
+    // Shield badge
     if (this.shieldTexture) {
-      this.shield = this.scn.add.sprite(16, 20, this.shieldTexture);
+      this.shield = this.scn.add.sprite(10 * scl, 8 * scl, this.shieldTexture);
       this.shield.setDisplaySize(16 * this.scaleFactor, 16 * this.scaleFactor);
       this.add(this.shield);
     }
 
     this.scn.add.existing(this);
+    this.setDepth(22);
 
     // Interactive hit area
     this.setSize(this.zebra.displayWidth, this.zebra.displayHeight);
-    this.setInteractive();
+    this.setInteractive({ useHandCursor: true });
 
-    // Tooltip for hover info
-    this.tooltip = new Tooltip(scene);
+    // --- Animations ---
+    this.startBobAnimation();
+    if (this.shield) {
+      this.startShieldFloat();
+    }
 
+    // --- Events → DOM overlays ---
     this.on('pointerover', () => {
-      this.tooltip.show(
-        this.x,
-        this.y - 96,
-        `Transaction ID:\n${this.txid}\n\nType: ${this.typeText} `
-      );
+      const camera = this.scn.cameras.main;
+      const screenX = (this.x - camera.scrollX) * camera.zoom;
+      const screenY = (this.y - camera.scrollY) * camera.zoom + 60; // +60 for navbar
+      zmEvents.emit('npcHover', {
+        txid: this.txid,
+        txType: this.txType,
+        typeText: this.typeText,
+        screenX,
+        screenY,
+      });
     });
 
     this.on('pointerout', () => {
-      this.tooltip.hide();
+      zmEvents.emit('npcHoverEnd');
     });
 
     this.on('pointerdown', () => {
-      window.open(
-        `https://mainnet.zcashexplorer.app/transactions/${this.txid}`,
-        '_blank'
-      );
+      zmEvents.emit('npcClick', {
+        txid: this.txid,
+        txType: this.txType,
+        typeText: this.typeText,
+      });
     });
   }
 
   /**
-   * Stop any currently playing tween on this NPC.
-   * Safe to call even if no tweens are active.
+   * Bobbing animation — 2px vertical oscillation, stepped.
+   */
+  startBobAnimation() {
+    if (this.isDestroyed) return;
+    this.bobTween = this.scn.tweens.add({
+      targets: this.zebra,
+      y: -2 * this.scaleFactor,
+      duration: 300,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Stepped',
+      easeParams: [2],
+    });
+
+    // Shadow pulses in sync
+    this.shadowTween = this.scn.tweens.add({
+      targets: this.shadow,
+      scaleX: 0.85,
+      alpha: 0.7,
+      duration: 300,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Stepped',
+      easeParams: [2],
+    });
+  }
+
+  /**
+   * Shield float animation — 2.2s ease-in-out, 2px vertical.
+   */
+  startShieldFloat() {
+    if (this.isDestroyed || !this.shield) return;
+    this.shieldTween = this.scn.tweens.add({
+      targets: this.shield,
+      y: (8 - 2) * this.scaleFactor,
+      duration: 1100,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+  }
+
+  /**
+   * Stop any currently playing movement tween.
    */
   stopCurrentTween() {
     if (this.isDestroyed) return;
     const tweens = this.scn.tweens.getTweensOf(this);
     for (const tw of tweens) {
+      // Don't stop the bob/shadow/shield tweens
+      if (tw === this.bobTween || tw === this.shadowTween || tw === this.shieldTween) continue;
       if (tw.isPlaying()) {
         tw.stop();
         tw.destroy();
@@ -109,10 +169,9 @@ class NPC extends Phaser.GameObjects.Container {
 
   /**
    * Animate this NPC along a BFS path.
-   *
    * @param {object[]} path  Array of tile objects from BFS
-   * @param {boolean} rush  If true, move fast (boarding train) and destroy on arrival
-   * @param {Function} [onComplete]  Callback invoked after the tween chain finishes
+   * @param {boolean} rush  If true, move fast (boarding) and destroy on arrival
+   * @param {Function} [onComplete]  Callback after tween finishes
    */
   moveAlongPath(path, rush, onComplete) {
     if (this.isDestroyed) {
@@ -120,24 +179,28 @@ class NPC extends Phaser.GameObjects.Container {
       return;
     }
 
-    // If path is empty or trivial, skip animation
     if (!path || path.length <= 1) {
       this.isPlaying = false;
       this.canWander = !rush;
-      if (rush) {
-        this.cleanup();
-      }
+      if (rush) this.cleanup();
       if (onComplete) onComplete();
       return;
     }
 
-    // Stop any existing movement tween before starting a new one
     this.stopCurrentTween();
-
     this.isPlaying = true;
     this.canWander = false;
 
     const speed = rush ? 20 : 60;
+
+    // Determine overall direction for flip
+    const lastTile = path[path.length - 1];
+    const firstTile = path[0];
+    if (lastTile.x < firstTile.x) {
+      this.zebra.setFlipX(true);
+    } else if (lastTile.x > firstTile.x) {
+      this.zebra.setFlipX(false);
+    }
 
     this.scn.tweens.chain({
       targets: this,
@@ -151,17 +214,14 @@ class NPC extends Phaser.GameObjects.Container {
         this.isPlaying = false;
         this.canWander = true;
 
-        if (rush) {
-          this.cleanup();
-        }
-
+        if (rush) this.cleanup();
         if (onComplete) onComplete();
       },
     });
   }
 
   /**
-   * Safely destroy this NPC and its tooltip. Guards against double-destroy.
+   * Safely destroy this NPC and all its tweens.
    */
   cleanup() {
     if (this.isDestroyed) return;
@@ -169,10 +229,10 @@ class NPC extends Phaser.GameObjects.Container {
     this.canWander = false;
     this.isPlaying = false;
 
-    if (this.tooltip) {
-      this.tooltip.destroy();
-      this.tooltip = null;
-    }
+    // Stop animation tweens
+    if (this.bobTween) { this.bobTween.destroy(); this.bobTween = null; }
+    if (this.shadowTween) { this.shadowTween.destroy(); this.shadowTween = null; }
+    if (this.shieldTween) { this.shieldTween.destroy(); this.shieldTween = null; }
 
     this.destroy();
   }

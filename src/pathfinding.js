@@ -77,3 +77,25 @@ export function bfs(start, goal, grid) {
 
   return [];
 }
+
+/**
+ * Find the shortest BFS path from `start` to the closest of the given door positions.
+ * Returns the path to the nearest reachable door, or [] if none reachable.
+ *
+ * @param {{ x: number, y: number }} start  Starting tile
+ * @param {{ x: number, y: number }[]} doors  Array of door tile positions
+ * @param {object[][]} grid  2D tile grid
+ * @returns {object[]} Shortest path to any door
+ */
+export function bfsClosestDoor(start, doors, grid) {
+  let bestPath = [];
+  for (const door of doors) {
+    const goal = grid[door.y] && grid[door.y][door.x];
+    if (!goal) continue;
+    const path = bfs(start, goal, grid);
+    if (path.length > 0 && (bestPath.length === 0 || path.length < bestPath.length)) {
+      bestPath = path;
+    }
+  }
+  return bestPath;
+}
