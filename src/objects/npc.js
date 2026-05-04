@@ -214,7 +214,47 @@ class NPC extends Phaser.GameObjects.Container {
         this.isPlaying = false;
         this.canWander = true;
 
-        if (rush) this.cleanup();
+        if (rush) {
+          // Boarding animation: shrink + fade before cleanup
+          this.boardingExit(() => {
+            if (onComplete) onComplete();
+          });
+        } else {
+          if (onComplete) onComplete();
+        }
+      },
+    });
+  }
+
+  /**
+   * Play a shrink + fade animation when the NPC boards the train.
+   * The NPC shrinks to 0.2 scale and fades to 0 alpha over 400ms,
+   * then is destroyed.
+   * @param {Function} [onComplete]  Callback after animation + destroy
+   */
+  boardingExit(onComplete) {
+    if (this.isDestroyed) {
+      if (onComplete) onComplete();
+      return;
+    }
+
+    this.canWander = false;
+    this.isPlaying = true;
+
+    // Stop the bobbing while boarding exit plays
+    if (this.bobTween) { this.bobTween.pause(); }
+    if (this.shadowTween) { this.shadowTween.pause(); }
+    if (this.shieldTween) { this.shieldTween.pause(); }
+
+    this.scn.tweens.add({
+      targets: this,
+      scaleX: 0.2,
+      scaleY: 0.2,
+      alpha: 0,
+      duration: 400,
+      ease: 'Quad.easeIn',
+      onComplete: () => {
+        this.cleanup();
         if (onComplete) onComplete();
       },
     });

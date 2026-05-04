@@ -43,10 +43,10 @@ class MainScene extends Phaser.Scene {
      * @type {{ x: number, y: number }[]}
      */
     this.doorPositions = [
-      { x: 6, y: 11 },
-      { x: 18, y: 11 },
-      { x: 25, y: 11 },
-      { x: 37, y: 11 },
+      { x: 8, y: 21 },
+      { x: 18, y: 21 },
+      { x: 27, y: 21 },
+      { x: 36, y: 21 },
     ];
 
     /**
@@ -56,12 +56,12 @@ class MainScene extends Phaser.Scene {
     this.platformBounds = {
       minX: 1,
       maxX: 43,
-      minY: 16,
-      maxY: 27,
+      minY: 23,
+      maxY: 33,
     };
 
     /** Spawn point for new NPCs (bottom-center escalator area) */
-    this.spawnTile = { x: 22, y: 27 };
+    this.spawnTile = { x: 22, y: 33 };
   }
 
   init(data) {
@@ -102,7 +102,7 @@ class MainScene extends Phaser.Scene {
     this.train = new Train(
       this,
       22 * this.map.tileWidth * this.scaleFactor,
-      10 * this.map.tileHeight * this.scaleFactor,
+      16 * this.map.tileHeight * this.scaleFactor,
       'train',
       this.scaleFactor
     );
@@ -159,19 +159,21 @@ class MainScene extends Phaser.Scene {
     skyline.setOrigin(0, 0);
     skyline.setDepth(0);
 
-    // Scale to fill the canvas width, maintain aspect ratio
+    // Scale to fill the entire canvas as a backdrop
     const canvasWidth = this.game.config.width;
-    const imgWidth = skyline.width;
-    const imgHeight = skyline.height;
-    const scaleX = canvasWidth / imgWidth;
+    const canvasHeight = this.game.config.height;
+    const scaleX = canvasWidth / skyline.width;
+    const scaleY = canvasHeight / skyline.height;
+    const scale = Math.max(scaleX, scaleY);
+    skyline.setScale(scale);
 
-    skyline.setScale(scaleX);
+    // Shift upward so we see the building midsections, not rooftops.
+    // The skyline peeks through transparent tile areas (station "windows").
+    const yOffset = -(skyline.height * scale - canvasHeight) * 0.4;
+    skyline.setY(yOffset);
 
-    // Position at the top of the scene
-    skyline.setY(0);
-
-    // Add twinkling star overlay
-    this.createStars(canvasWidth, imgHeight * scaleX);
+    // Add twinkling star overlay across the skyline area
+    this.createStars(canvasWidth, canvasHeight * 0.4);
   }
 
   /**
