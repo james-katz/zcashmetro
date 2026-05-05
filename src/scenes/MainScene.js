@@ -47,7 +47,7 @@ class MainScene extends Phaser.Scene {
     this.trainY = 460;
 
     // Train door Y — where NPCs walk to before boarding (top of platform)
-    this.doorY = 20; // tile row (21 * 32 = 672px)
+    this.doorY = 19; // tile row (21 * 32 = 672px)
 
     // Door X positions (tile columns, spaced across the train)
     this.doorPositions = [
@@ -73,10 +73,18 @@ class MainScene extends Phaser.Scene {
 
   create() {
     // --- Background image (the entire station) ---
-    const bg = this.add.image(0, 0, 'station_bg');
-    bg.setOrigin(0, 0);
-    bg.setDisplaySize(this.W, this.H);
-    bg.setDepth(0);
+    this.bgImage = this.add.image(0, 0, 'station_bg');
+    this.bgImage.setOrigin(0, 0);
+    this.bgImage.setDisplaySize(this.W, this.H);
+    this.bgImage.setDepth(0);
+
+    // --- Skin switching ---
+    zmEvents.on('changeSkin', (skinKey) => {
+      if (this.textures.exists(skinKey)) {
+        this.bgImage.setTexture(skinKey);
+        this.bgImage.setDisplaySize(this.W, this.H);
+      }
+    });
 
     // --- Build collision grid ---
     this.buildGrid();

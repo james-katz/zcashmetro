@@ -216,6 +216,14 @@ export function initUI() {
     });
   }
 
+  // --- Skin switcher ---
+  const skinSelect = document.getElementById('zm-skin-select');
+  if (skinSelect) {
+    skinSelect.addEventListener('change', () => {
+      zmEvents.emit('changeSkin', skinSelect.value);
+    });
+  }
+
   // Initial translation application
   applyTranslations();
 }
