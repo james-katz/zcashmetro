@@ -10,11 +10,8 @@ class LoadingScene extends Phaser.Scene {
   }
 
   preload() {
-    // Skyline background
-    this.load.image('skyline', './assets/skyline.png');
-
-    // New tileset for sprite extraction
-    this.load.image('tileset_new', './assets/tileset_new.png');
+    // Station background (single image — IS the entire station scene)
+    this.load.image('station_bg', './assets/station_bg.png');
 
     // Train
     this.load.image('train', './assets/train.png');

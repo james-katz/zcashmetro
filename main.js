@@ -3,9 +3,10 @@ import MainScene from './src/scenes/MainScene';
 import LoadingScene from './src/scenes/LoadingScene';
 import { initUI } from './src/ui.js';
 
-// Fixed game resolution — Phaser FIT scales to viewport with black bars
-const GAME_WIDTH = 1080;
-const GAME_HEIGHT = 840;
+// Fixed game resolution — matches station_bg.png (1792×1243)
+// Phaser FIT scales to viewport, maintaining aspect ratio with black bars
+const GAME_WIDTH = 1792;
+const GAME_HEIGHT = 1243;
 
 const config = {
   type: Phaser.AUTO,

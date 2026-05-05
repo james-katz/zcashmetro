@@ -202,12 +202,13 @@ class NPC extends Phaser.GameObjects.Container {
       this.zebra.setFlipX(false);
     }
 
+    const tileSize = this.scn.TILE || (12 * this.scaleFactor);
     this.scn.tweens.chain({
       targets: this,
       ease: 'linear',
       tweens: path.map((p) => ({
-        x: p.x * 12 * this.scaleFactor,
-        y: p.y * 12 * this.scaleFactor,
+        x: p.x * tileSize,
+        y: p.y * tileSize,
         duration: speed - Math.random() * 20,
       })),
       onComplete: () => {
