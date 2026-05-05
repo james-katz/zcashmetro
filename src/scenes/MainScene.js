@@ -78,26 +78,11 @@ class MainScene extends Phaser.Scene {
     this.bgImage.setDisplaySize(this.W, this.H);
     this.bgImage.setDepth(0);
 
-    // --- Skin switching (background + train) ---
-    const skinToTrain = {
-      station_bg: 'train',
-      skin_blue:  'train_blue',
-      skin_pink:  'train_pink',
-      skin_green: 'train_green',
-    };
-
+    // --- Skin switching ---
     zmEvents.on('changeSkin', (skinKey) => {
       if (this.textures.exists(skinKey)) {
         this.bgImage.setTexture(skinKey);
         this.bgImage.setDisplaySize(this.W, this.H);
-      }
-      const trainKey = skinToTrain[skinKey];
-      if (trainKey && this.textures.exists(trainKey) && this.train) {
-        this.train.setTexture(trainKey);
-        this.train.setDisplaySize(
-          (1288 / 2.2) * this.scaleFactor,
-          (211 / 2.2) * this.scaleFactor
-        );
       }
     });
 

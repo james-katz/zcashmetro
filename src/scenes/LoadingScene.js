@@ -16,11 +16,8 @@ class LoadingScene extends Phaser.Scene {
     this.load.image('skin_pink', './assets/station_skin_pink.png');
     this.load.image('skin_green', './assets/station_skin_green.png');
 
-    // Train sprites (one per skin)
+    // Train
     this.load.image('train', './assets/train.png');
-    this.load.image('train_blue', './assets/train_blue.png');
-    this.load.image('train_pink', './assets/train_pink.png');
-    this.load.image('train_green', './assets/train_green.png');
 
     // NPC sprites
     this.load.image('zebra', './assets/zebra.png');
