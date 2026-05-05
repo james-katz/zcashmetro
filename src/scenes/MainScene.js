@@ -41,13 +41,13 @@ class MainScene extends Phaser.Scene {
     this.ROWS = Math.floor(this.H / this.TILE);  // 38
 
     // Scale factor for NPC sprite sizing (kept for compatibility)
-    this.scaleFactor = 2.5;
+    this.scaleFactor = 3.5;
 
     // Train placement — centered on the track area
-    this.trainY = 380;
+    this.trainY = 490;
 
     // Train door Y — where NPCs walk to before boarding (top of platform)
-    this.doorY = 17; // tile row (17 * 32 = 544px)
+    this.doorY = 21; // tile row (21 * 32 = 672px)
 
     // Door X positions (tile columns, spaced across the train)
     this.doorPositions = [
@@ -58,9 +58,9 @@ class MainScene extends Phaser.Scene {
     ];
 
     // Platform walkable bounds (tile coords)
-    // Y: from ~row 19 (608px) to row 37 (1184px)
+    // Y: from ~row 22 (704px) to row 37 (1184px)
     // X: from col 1 to col 54
-    this.platformBounds = { minX: 1, maxX: 54, minY: 19, maxY: 37 };
+    this.platformBounds = { minX: 1, maxX: 54, minY: 22, maxY: 37 };
 
     // Spawn point (bottom-center of platform)
     this.spawnTile = { x: 28, y: 37 };

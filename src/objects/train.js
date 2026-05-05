@@ -35,7 +35,7 @@ class Train extends Phaser.Physics.Arcade.Sprite {
 
     this.scn.physics.world.enable(this);
     this.scn.add.existing(this);
-    this.setDisplaySize((1288 / 2.67) * this.scaleFactor, (211 / 2.6) * this.scaleFactor);
+    this.setDisplaySize((1288 / 2.2) * this.scaleFactor, (211 / 2.2) * this.scaleFactor);
     this.setDepth(10);
   }
 
@@ -62,7 +62,7 @@ class Train extends Phaser.Physics.Arcade.Sprite {
       targets: this,
       tweens: [
         {
-          x: 75 * 12 * this.scaleFactor,
+          x: (this.scn.W || 1792) + this.displayWidth,
           ease: 'Quad.easeInOut',
           duration: 2000,
           repeat: false,
@@ -90,7 +90,7 @@ class Train extends Phaser.Physics.Arcade.Sprite {
     this.state = TrainState.ARRIVING;
     zmEvents.emit('trainArrive');
 
-    this.x = -65 * 12 * this.scaleFactor;
+    this.x = -this.displayWidth;
 
     if (this.trainAnim) {
       this.trainAnim.destroy();
@@ -101,7 +101,7 @@ class Train extends Phaser.Physics.Arcade.Sprite {
       targets: this,
       tweens: [
         {
-          x: 22 * 12 * this.scaleFactor,
+          x: (this.scn.W || 1792) / 2,
           ease: 'Quad.easeOut',
           duration: 3000,
         },

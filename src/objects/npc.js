@@ -83,8 +83,13 @@ class NPC extends Phaser.GameObjects.Container {
     // --- Events → DOM overlays ---
     this.on('pointerover', () => {
       const camera = this.scn.cameras.main;
-      const screenX = (this.x - camera.scrollX) * camera.zoom;
-      const screenY = (this.y - camera.scrollY) * camera.zoom + 60; // +60 for navbar
+      const canvas = this.scn.game.canvas;
+      const rect = canvas.getBoundingClientRect();
+      // FIT mode scale = actual canvas display size / game resolution
+      const fitScaleX = rect.width / camera.width;
+      const fitScaleY = rect.height / camera.height;
+      const screenX = rect.left + (this.x - camera.scrollX) * camera.zoom * fitScaleX;
+      const screenY = rect.top + (this.y - camera.scrollY) * camera.zoom * fitScaleY - 40;
       zmEvents.emit('npcHover', {
         txid: this.txid,
         txType: this.txType,
