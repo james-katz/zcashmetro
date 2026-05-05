@@ -96,7 +96,7 @@ app.get('/txinfo', async (req, res) => {
     const tx = await grpc.getTransaction(client, txid);
     console.log('tx is mined in height:', tx.height);
     if (tx.height > 0) {
-      res.json({ height: tx.height });
+      res.json({ height: Number(tx.height) });
     } else {
       res.json({ height: -1 });
     }
@@ -120,10 +120,27 @@ app.get('/mempool', async (req, res) => {
   let tx_list = [];
   try {
     const db_tx = await sequelize.models.transaction.findAll();
-    tx_list = db_tx.map((tx) => ({
-      txid: tx.id,
-      type: tx.type,
-    }));
+    // Filter: only return transactions that are still in the mempool
+    const TxModel = sequelize.models.transaction;
+    for (const tx of db_tx) {
+      try {
+        const t = await grpc.getTransaction(client, tx.id);
+        if (t.height > 0) {
+          // Already mined — remove from DB and skip
+          console.log(`/mempool cleanup: ${tx.id} already mined at ${t.height}`);
+          await TxModel.destroy({ where: { id: tx.id } });
+          mempoolTx = mempoolTx.filter((m) => m.txid !== tx.id);
+          continue;
+        }
+      } catch (e) {
+        // Transaction doesn't exist anymore — remove from DB
+        console.log(`/mempool cleanup: ${tx.id} no longer exists`);
+        await TxModel.destroy({ where: { id: tx.id } });
+        mempoolTx = mempoolTx.filter((m) => m.txid !== tx.id);
+        continue;
+      }
+      tx_list.push({ txid: tx.id, type: tx.type });
+    }
   } catch (e) {
     console.log(e);
   }

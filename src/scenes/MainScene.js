@@ -41,13 +41,13 @@ class MainScene extends Phaser.Scene {
     this.ROWS = Math.floor(this.H / this.TILE);  // 38
 
     // Scale factor for NPC sprite sizing (kept for compatibility)
-    this.scaleFactor = 3.5;
+    this.scaleFactor = 2.85;
 
     // Train placement — centered on the track area
-    this.trainY = 490;
+    this.trainY = 460;
 
     // Train door Y — where NPCs walk to before boarding (top of platform)
-    this.doorY = 21; // tile row (21 * 32 = 672px)
+    this.doorY = 20; // tile row (21 * 32 = 672px)
 
     // Door X positions (tile columns, spaced across the train)
     this.doorPositions = [
@@ -95,7 +95,7 @@ class MainScene extends Phaser.Scene {
     for (const tx of this.npcData) {
       const posx = (pb.minX + Math.random() * (pb.maxX - pb.minX)) * this.TILE;
       const posy = (pb.minY + Math.random() * (pb.maxY - pb.minY)) * this.TILE;
-      const npc = new NPC(this, tx, posx, posy, this.scaleFactor);
+      const npc = new NPC(this, tx, posx, posy, this.scaleFactor + 1);
       npc.canWander = true;
       this.npcs.push(npc);
     }
@@ -119,7 +119,7 @@ class MainScene extends Phaser.Scene {
 
         // Platform floor (walkable)
         if (y >= this.platformBounds.minY && y <= this.platformBounds.maxY &&
-            x >= this.platformBounds.minX && x <= this.platformBounds.maxX) {
+          x >= this.platformBounds.minX && x <= this.platformBounds.maxX) {
           collides = false;
         }
 
@@ -201,7 +201,26 @@ class MainScene extends Phaser.Scene {
 
   async spawnNewTransactions(mempool) {
     const pb = this.platformBounds;
+    const serverTxids = new Set(mempool.map((tx) => tx.txid));
 
+    // Remove NPCs whose transactions are no longer in the server mempool
+    // (they were mined and cleaned up server-side)
+    const staleNpcs = [];
+    const freshNpcs = [];
+    for (const npc of this.npcs) {
+      if (npc.isDestroyed) continue;
+      if (!serverTxids.has(npc.txid)) {
+        staleNpcs.push(npc);
+      } else {
+        freshNpcs.push(npc);
+      }
+    }
+    for (const npc of staleNpcs) {
+      npc.cleanup();
+    }
+    this.npcs = freshNpcs;
+
+    // Add new transactions not yet represented by NPCs
     for (const tx of mempool) {
       if (this.npcs.some((n) => n.txid === tx.txid)) continue;
       const startTile = this.grid[this.spawnTile.y] && this.grid[this.spawnTile.y][this.spawnTile.x];
@@ -223,17 +242,12 @@ class MainScene extends Phaser.Scene {
       const goal = this.grid[targetY] && this.grid[targetY][targetX];
       if (!goal) continue;
 
-      try {
-        const r = await http.get(`/txinfo/?txid=${tx.txid}`);
-        if (r.data.height >= 0 && !r.data.error) continue;
-      } catch { continue; }
-
       const path = bfs(startTile, goal, this.grid);
       const npc = new NPC(
         this, tx,
         this.spawnTile.x * this.TILE,
         this.spawnTile.y * this.TILE,
-        this.scaleFactor
+        this.scaleFactor + 1
       );
       this.npcs.push(npc);
 
