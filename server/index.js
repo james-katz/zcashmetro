@@ -220,10 +220,10 @@ function listenForMempool() {
     };
 
     if (!mempoolTx.some((t) => t.txid === newtx.txid)) {
-      // if (newtx.expiry > 0) {
-      await addTxToDatabase(newtx);
-      mempoolTx.push(newtx);
-      // }
+      if (newtx.expiry > 0) {
+        await addTxToDatabase(newtx);
+        mempoolTx.push(newtx);
+      }
     }
   });
 

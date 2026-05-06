@@ -31,6 +31,9 @@ class MainScene extends Phaser.Scene {
     this.timeInterval = 1000;
     this.blured = false;
 
+    // Track recently-mined txids to prevent ghost re-spawns
+    this.recentlyMined = new Set();
+
     // Image is 1792×1243; game resolution matches 1:1
     this.W = 1792;
     this.H = 1243;
@@ -226,11 +229,15 @@ class MainScene extends Phaser.Scene {
       const [mempoolRes, blockRes] = await Promise.all([
         http.get('/mempool'), http.get('/latestblock'),
       ]);
-      await this.spawnNewTransactions(mempoolRes.data);
+
+      // Handle new block FIRST — remove mined NPCs before spawning new ones.
+      // This prevents mined txs from being re-spawned as ghost NPCs.
       if (blockRes.data.height > this.currHeight) {
         this.currHeight = blockRes.data.height;
         await this.handleNewBlock();
       }
+
+      await this.spawnNewTransactions(mempoolRes.data);
     } catch (err) {
       console.error('Poll error:', err.message);
     } finally {
@@ -262,6 +269,8 @@ class MainScene extends Phaser.Scene {
     // Add new transactions not yet represented by NPCs
     for (const tx of mempool) {
       if (this.npcs.some((n) => n.txid === tx.txid)) continue;
+      // Skip recently-mined txids to prevent ghost re-spawns
+      if (this.recentlyMined.has(tx.txid)) continue;
       const startTile = this.grid[this.spawnTile.y] && this.grid[this.spawnTile.y][this.spawnTile.x];
       if (!startTile) continue;
 
@@ -317,8 +326,14 @@ class MainScene extends Phaser.Scene {
         if (npc.isDestroyed) continue;
         try {
           const r = await http.get(`/txinfo/?txid=${npc.txid}`);
-          if (r.data.height > 0) minedNpcs.push(npc);
-          else keptNpcs.push(npc);
+          if (r.data.height > 0) {
+            minedNpcs.push(npc);
+            // Remember this txid so it won't be re-spawned as a ghost
+            this.recentlyMined.add(npc.txid);
+            setTimeout(() => this.recentlyMined.delete(npc.txid), 30000);
+          } else {
+            keptNpcs.push(npc);
+          }
         } catch { keptNpcs.push(npc); }
       }
       this.npcs = keptNpcs;
