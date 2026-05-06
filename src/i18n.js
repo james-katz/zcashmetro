@@ -61,6 +61,11 @@ const translations = {
     secondsAgo: '{n}s ago',
     justNow: 'just now',
 
+    // Elapsed timer
+    elapsed: 'ELAPSED',
+    elapsedSeconds: '{n} Seconds',
+    elapsedMinSec: '{m} Min, {s} Sec',
+
     // Language name
     langName: 'English',
   },
@@ -111,6 +116,10 @@ const translations = {
     secondsAgo: '{n}s atrás',
     justNow: 'agora',
 
+    elapsed: 'TEMPO',
+    elapsedSeconds: '{n} Segundos',
+    elapsedMinSec: '{m} Min, {s} Seg',
+
     langName: 'Português',
   },
 
@@ -159,6 +168,10 @@ const translations = {
 
     secondsAgo: 'hace {n}s',
     justNow: 'ahora',
+
+    elapsed: 'TIEMPO',
+    elapsedSeconds: '{n} Segundos',
+    elapsedMinSec: '{m} Min, {s} Seg',
 
     langName: 'Español',
   },
@@ -209,6 +222,10 @@ const translations = {
     secondsAgo: '{n}с назад',
     justNow: 'только что',
 
+    elapsed: 'ВРЕМЯ',
+    elapsedSeconds: '{n} Секунд',
+    elapsedMinSec: '{m} Мин, {s} Сек',
+
     langName: 'Русский',
   },
 
@@ -257,6 +274,10 @@ const translations = {
 
     secondsAgo: '{n}秒前',
     justNow: '刚刚',
+
+    elapsed: '已过',
+    elapsedSeconds: '{n} 秒',
+    elapsedMinSec: '{m} 分 {s} 秒',
 
     langName: '中文',
   },

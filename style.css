@@ -65,7 +65,7 @@ body {
   align-items: center;
   padding: 14px 28px;
   gap: 28px;
-  height: 60px;
+  height: 64px;
 }
 
 .chrome .brand {
@@ -73,7 +73,7 @@ body {
   align-items: center;
   gap: 12px;
   font-family: var(--zm-font-pixel);
-  font-size: 14px;
+  font-size: 16px;
   letter-spacing: 0.04em;
   color: var(--zm-zcash-yellow);
   white-space: nowrap;
@@ -96,7 +96,7 @@ body {
   align-items: center;
   gap: 10px;
   font-family: var(--zm-font-pixel);
-  font-size: 10px;
+  font-size: 12px;
   letter-spacing: 0.08em;
   white-space: nowrap;
 }
@@ -115,24 +115,44 @@ body {
   100% { box-shadow: 0 0 0 0 rgba(254,187,24,0); }
 }
 
-/* Language selector */
-.chrome .lang-select {
-  background: transparent;
-  color: var(--zm-tile-grout);
-  border: 1px solid var(--zm-tile-deep);
-  font-family: var(--zm-font-mono);
-  font-size: 11px;
-  padding: 4px 8px;
+/* Dropdown selects (skin / language) */
+.chrome .zm-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: #111118;
+  color: var(--zm-zcash-yellow-soft);
+  border: 2px solid var(--zm-tile-deep);
+  font-family: var(--zm-font-pixel);
+  font-size: 10px;
+  padding: 6px 28px 6px 10px;
   cursor: pointer;
   outline: none;
+  letter-spacing: 0.05em;
+  /* Custom arrow */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23febb18'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 10px 6px;
 }
-.chrome .lang-select:hover { border-color: var(--zm-zcash-yellow); color: #fff; }
+.chrome .zm-select:hover,
+.chrome .zm-select:focus {
+  border-color: var(--zm-zcash-yellow);
+  color: var(--zm-zcash-yellow);
+  box-shadow: 0 0 6px rgba(254, 187, 24, 0.25);
+}
+.chrome .zm-select option {
+  background: #111118;
+  color: var(--zm-zcash-yellow-soft);
+  font-family: var(--zm-font-mono);
+  font-size: 12px;
+  padding: 6px;
+}
 
 /* ============== GAME CONTAINER ============== */
 #game-container {
   position: relative;
   width: 100%;
-  height: calc(100vh - 60px);
+  height: calc(100vh - 64px);
   overflow: hidden;
   background: #000;
 }

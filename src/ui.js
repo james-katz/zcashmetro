@@ -62,9 +62,35 @@ export function initUI() {
   let inspectorOpenTime = null;
   let seenInterval = null;
 
+  // --- Elapsed timer state ---
+  const elapsedEl = document.getElementById('zm-elapsed-value');
+  let lastBlockHeight = null;
+  let lastBlockTime = Date.now();
+
+  // Update elapsed display every second
+  setInterval(() => {
+    if (!elapsedEl) return;
+    const totalSec = Math.floor((Date.now() - lastBlockTime) / 1000);
+    if (totalSec < 60) {
+      elapsedEl.textContent = t('elapsedSeconds', { n: totalSec });
+    } else {
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      elapsedEl.textContent = t('elapsedMinSec', { m, s });
+    }
+  }, 1000);
+
   // --- Stats updates ---
   zmEvents.on('stats', (data) => {
     if (blockEl && data.height != null) {
+      // Detect new block → reset elapsed timer
+      if (lastBlockHeight !== null && data.height > lastBlockHeight) {
+        lastBlockTime = Date.now();
+      }
+      if (lastBlockHeight === null) {
+        lastBlockHeight = data.height;
+      }
+      lastBlockHeight = data.height;
       blockEl.textContent = Number(data.height).toLocaleString();
     }
     if (mempoolEl && data.mempool != null) {
@@ -235,6 +261,7 @@ function applyTranslations() {
   // Navbar labels
   setTextById('zm-block-label', t('block'));
   setTextById('zm-mempool-label', t('mempool'));
+  setTextById('zm-elapsed-label', t('elapsed'));
 
   // Legend
   setTextById('zm-legend-title', t('legendTitle'));

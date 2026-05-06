@@ -55,8 +55,8 @@ class MainScene extends Phaser.Scene {
     // Door X positions (tile columns, spaced across the train)
     this.doorPositions = [
       { x: 10, y: this.doorY },
-      { x: 22, y: this.doorY },
-      { x: 34, y: this.doorY },
+      { x: 24.5, y: this.doorY },
+      { x: 31.5, y: this.doorY },
       { x: 46, y: this.doorY },
     ];
 
@@ -80,6 +80,12 @@ class MainScene extends Phaser.Scene {
     this.bgImage.setOrigin(0, 0);
     this.bgImage.setDisplaySize(this.W, this.H);
     this.bgImage.setDepth(0);
+
+    // Debug, do not uncomment:
+    // for (const d of this.doorPositions) {
+    //   let a = this.add.rectangle(this.tileToWorldX(d.x), this.tileToWorldY(d.y), 32 * this.scaleFactor, 32 * this.scaleFactor, 0x00ff00);
+    //   a.setDepth(200);
+    // }
 
     // --- Skin switching ---
     zmEvents.on('changeSkin', (skinKey) => {
