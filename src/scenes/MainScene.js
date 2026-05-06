@@ -63,7 +63,7 @@ class MainScene extends Phaser.Scene {
     this.platformBounds = { minX: 1, maxX: 54, minY: 23, maxY: 37 };
 
     // Spawn point (bottom-center of platform)
-    this.spawnTile = { x: 28, y: 40 };
+    this.spawnTile = { x: 28, y: 38 };
   }
 
   init(data) {
@@ -140,13 +140,24 @@ class MainScene extends Phaser.Scene {
 
   buildGrid() {
     this.grid = [];
-    for (let y = 0; y < this.ROWS; y++) {
+
+    // Extend grid rows to include the off-screen spawn point
+    const gridRows = Math.max(this.ROWS, this.spawnTile.y + 1);
+
+    for (let y = 0; y < gridRows; y++) {
       const row = [];
       for (let x = 0; x < this.COLS; x++) {
         let collides = true;
 
         // Platform floor (walkable)
         if (y >= this.platformBounds.minY && y <= this.platformBounds.maxY &&
+          x >= this.platformBounds.minX && x <= this.platformBounds.maxX) {
+          collides = false;
+        }
+
+        // Spawn corridor: rows below platform to spawn point (walkable)
+        // so BFS can find a path from spawn → platform
+        if (y > this.platformBounds.maxY && y <= this.spawnTile.y &&
           x >= this.platformBounds.minX && x <= this.platformBounds.maxX) {
           collides = false;
         }
