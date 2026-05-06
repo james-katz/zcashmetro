@@ -16,8 +16,11 @@ class LoadingScene extends Phaser.Scene {
     this.load.image('skin_pink', './assets/station_skin_pink.png');
     this.load.image('skin_green', './assets/station_skin_green.png');
 
-    // Train
-    this.load.image('train', './assets/train.png');
+    // Train (skins)
+    // this.load.image('train', './assets/new_train.png');
+    this.load.image('train_skin_blue', './assets/blue_train.png');
+    this.load.image('train_skin_pink', './assets/pink_train.png');
+    this.load.image('train_skin_green', './assets/green_train.png');
 
     // NPC sprites
     this.load.image('zebra', './assets/zebra.png');
@@ -53,6 +56,7 @@ class LoadingScene extends Phaser.Scene {
       const [mempoolRes, blockRes] = await Promise.all([
         http.get('/mempool'), http.get('/latestblock'),
       ]);
+      console.log(blockRes.data)
       this.scene.start('MainScene', { npcData: mempoolRes.data, block: blockRes.data });
     } catch (err) {
       console.error('Failed to fetch initial data:', err);

@@ -57,10 +57,10 @@ class MainScene extends Phaser.Scene {
 
     // Door X positions (tile columns, spaced across the train)
     this.doorPositions = [
-      { x: 10, y: this.doorY },
-      { x: 24.5, y: this.doorY },
-      { x: 31.5, y: this.doorY },
-      { x: 46, y: this.doorY },
+      { x: 7.7, y: this.doorY },
+      { x: 23.5, y: this.doorY },
+      { x: 32.4, y: this.doorY },
+      { x: 48.4, y: this.doorY },
     ];
 
     // Platform walkable bounds (tile coords)
@@ -75,6 +75,9 @@ class MainScene extends Phaser.Scene {
   init(data) {
     this.npcData = data.npcData;
     this.currHeight = data.block.height;
+    if (data.block.blockTime) {
+      this.blockTime = data.block.blockTime;
+    }
   }
 
   create() {
@@ -92,9 +95,11 @@ class MainScene extends Phaser.Scene {
 
     // --- Skin switching ---
     zmEvents.on('changeSkin', (skinKey) => {
-      if (this.textures.exists(skinKey)) {
+      const train_skin = `train_${skinKey}`;
+      if (this.textures.exists(skinKey) && this.textures.exists(train_skin)) {
         this.bgImage.setTexture(skinKey);
         this.bgImage.setDisplaySize(this.W, this.H);
+        this.train.setTexture(train_skin);
       }
     });
 
@@ -106,8 +111,8 @@ class MainScene extends Phaser.Scene {
       this,
       this.W / 2,      // centered horizontally
       this.trainY,      // on the tracks
-      'train',
-      2.65
+      'train_skin_blue',
+      2.95
     );
 
     // --- Spawn NPCs ---
