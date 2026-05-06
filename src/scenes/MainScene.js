@@ -41,13 +41,13 @@ class MainScene extends Phaser.Scene {
     this.ROWS = Math.floor(this.H / this.TILE);  // 38
 
     // Scale factor for NPC sprite sizing (kept for compatibility)
-    this.scaleFactor = 2.85;
+    this.scaleFactor = 2.25;
 
     // Train placement — centered on the track area
-    this.trainY = 460;
+    this.trainY = 590;
 
     // Train door Y — where NPCs walk to before boarding (top of platform)
-    this.doorY = 19; // tile row (21 * 32 = 672px)
+    this.doorY = 21; // tile row (21 * 32 = 672px)
 
     // Door X positions (tile columns, spaced across the train)
     this.doorPositions = [
@@ -60,10 +60,10 @@ class MainScene extends Phaser.Scene {
     // Platform walkable bounds (tile coords)
     // Y: from ~row 22 (704px) to row 37 (1184px)
     // X: from col 1 to col 54
-    this.platformBounds = { minX: 1, maxX: 54, minY: 22, maxY: 37 };
+    this.platformBounds = { minX: 1, maxX: 54, minY: 23, maxY: 37 };
 
     // Spawn point (bottom-center of platform)
-    this.spawnTile = { x: 28, y: 37 };
+    this.spawnTile = { x: 28, y: 40 };
   }
 
   init(data) {
@@ -73,7 +73,7 @@ class MainScene extends Phaser.Scene {
 
   create() {
     // --- Background image (the entire station) ---
-    this.bgImage = this.add.image(0, 0, 'station_bg');
+    this.bgImage = this.add.image(0, 0, 'skin_blue');
     this.bgImage.setOrigin(0, 0);
     this.bgImage.setDisplaySize(this.W, this.H);
     this.bgImage.setDepth(0);
@@ -95,7 +95,7 @@ class MainScene extends Phaser.Scene {
       this.W / 2,      // centered horizontally
       this.trainY,      // on the tracks
       'train',
-      this.scaleFactor
+      2.65
     );
 
     // --- Spawn NPCs ---
@@ -110,8 +110,28 @@ class MainScene extends Phaser.Scene {
 
     zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
 
+    // --- Visibility handling (tab switch) ---
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        this.blured = true;
+      } else {
+        this.blured = false;
+        // Force an immediate full resync when the tab regains focus
+        // Reset locks that may have gone stale while the tab was hidden
+        this.dataLock = false;
+        this.blockProcessing = false;
+        this.pollServer();
+      }
+    });
+
+    // Also listen to Phaser's blur/focus as a fallback
     this.game.events.on('blur', () => { this.blured = true; }, this);
-    this.game.events.on('focus', () => { this.blured = false; }, this);
+    this.game.events.on('focus', () => {
+      this.blured = false;
+      this.dataLock = false;
+      this.blockProcessing = false;
+      this.pollServer();
+    }, this);
   }
 
   // ---------------------------------------------------------------------------
@@ -274,50 +294,58 @@ class MainScene extends Phaser.Scene {
     if (this.blockProcessing) return;
     this.blockProcessing = true;
 
-    const minedNpcs = [];
-    const keptNpcs = [];
-    for (const npc of this.npcs) {
-      if (npc.isDestroyed) continue;
-      try {
-        const r = await http.get(`/txinfo/?txid=${npc.txid}`);
-        if (r.data.height > 0) minedNpcs.push(npc);
-        else keptNpcs.push(npc);
-      } catch { keptNpcs.push(npc); }
-    }
-    this.npcs = keptNpcs;
-
-    if (minedNpcs.length === 0) {
-      this.train.depart();
-      zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
+    // Safety timeout: reset blockProcessing after 15s max to prevent stuck state
+    const blockTimeout = setTimeout(() => {
       this.blockProcessing = false;
-      return;
-    }
+    }, 15000);
 
-    let boarded = 0;
-    const total = minedNpcs.length;
-    const onBoarded = () => {
-      boarded++;
+    try {
+      const minedNpcs = [];
+      const keptNpcs = [];
+      for (const npc of this.npcs) {
+        if (npc.isDestroyed) continue;
+        try {
+          const r = await http.get(`/txinfo/?txid=${npc.txid}`);
+          if (r.data.height > 0) minedNpcs.push(npc);
+          else keptNpcs.push(npc);
+        } catch { keptNpcs.push(npc); }
+      }
+      this.npcs = keptNpcs;
+
+      if (minedNpcs.length === 0) {
+        this.train.depart();
+        zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
+        return;
+      }
+
+      let boarded = 0;
+      const total = minedNpcs.length;
+      const onBoarded = () => {
+        boarded++;
+        zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
+        if (boarded >= total) this.train.depart();
+      };
+
+      for (const npc of minedNpcs) {
+        npc.canWander = false;
+        npc.stopCurrentTween();
+        if (this.blured) { npc.cleanup(); onBoarded(); continue; }
+
+        const sx = this.worldToTileX(npc.x);
+        const sy = this.worldToTileY(npc.y);
+        const start = this.grid[sy] && this.grid[sy][sx];
+        if (!start) { npc.cleanup(); onBoarded(); continue; }
+
+        const path = bfsClosestDoor(start, this.doorPositions, this.grid);
+        if (!path.length) { npc.cleanup(); onBoarded(); continue; }
+        npc.moveAlongPath(path, true, onBoarded);
+      }
+
       zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
-      if (boarded >= total) this.train.depart();
-    };
-
-    for (const npc of minedNpcs) {
-      npc.canWander = false;
-      npc.stopCurrentTween();
-      if (this.blured) { npc.cleanup(); onBoarded(); continue; }
-
-      const sx = this.worldToTileX(npc.x);
-      const sy = this.worldToTileY(npc.y);
-      const start = this.grid[sy] && this.grid[sy][sx];
-      if (!start) { npc.cleanup(); onBoarded(); continue; }
-
-      const path = bfsClosestDoor(start, this.doorPositions, this.grid);
-      if (!path.length) { npc.cleanup(); onBoarded(); continue; }
-      npc.moveAlongPath(path, true, onBoarded);
+    } finally {
+      clearTimeout(blockTimeout);
+      this.blockProcessing = false;
     }
-
-    zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
-    this.blockProcessing = false;
   }
 }
 

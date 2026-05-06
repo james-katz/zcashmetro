@@ -11,7 +11,7 @@ class LoadingScene extends Phaser.Scene {
 
   preload() {
     // Station backgrounds (skins)
-    this.load.image('station_bg', './assets/station_bg.png');
+    // this.load.image('station_bg', './assets/station_bg.png');
     this.load.image('skin_blue', './assets/station_skin_blue.png');
     this.load.image('skin_pink', './assets/station_skin_pink.png');
     this.load.image('skin_green', './assets/station_skin_green.png');
