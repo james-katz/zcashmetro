@@ -81,7 +81,20 @@ app.get('/', (req, res) => {
 app.get('/latestblock', async (req, res) => {
   try {
     const block = await grpc.getLatestBlock(client);
-    res.json({ height: block.height });
+    const height = Number(block.height);
+
+    // Fetch the block's timestamp so the client can show elapsed time
+    let blockTime = null;
+    try {
+      const compactBlock = await grpc.getBlock(client, height);
+      if (compactBlock && compactBlock.time) {
+        blockTime = Number(compactBlock.time);
+      }
+    } catch (e) {
+      // Non-critical — just omit the timestamp
+    }
+
+    res.json({ height, blockTime });
   } catch (err) {
     console.error('Failed to get latest block:', err.message);
     res.status(500).json({ error: 'Failed to get latest block' });

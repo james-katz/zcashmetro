@@ -34,6 +34,9 @@ class MainScene extends Phaser.Scene {
     // Track recently-mined txids to prevent ghost re-spawns
     this.recentlyMined = new Set();
 
+    // Block timestamp (Unix epoch) from server for elapsed display
+    this.blockTime = null;
+
     // Image is 1792×1243; game resolution matches 1:1
     this.W = 1792;
     this.H = 1243;
@@ -117,7 +120,7 @@ class MainScene extends Phaser.Scene {
       this.npcs.push(npc);
     }
 
-    zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
+    zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length, blockTime: this.blockTime });
 
     // --- Visibility handling (tab switch) ---
     document.addEventListener('visibilitychange', () => {
@@ -236,6 +239,11 @@ class MainScene extends Phaser.Scene {
         http.get('/mempool'), http.get('/latestblock'),
       ]);
 
+      // Capture block timestamp for elapsed display
+      if (blockRes.data.blockTime) {
+        this.blockTime = blockRes.data.blockTime;
+      }
+
       // Handle new block FIRST — remove mined NPCs before spawning new ones.
       // This prevents mined txs from being re-spawned as ghost NPCs.
       if (blockRes.data.height > this.currHeight) {
@@ -313,7 +321,7 @@ class MainScene extends Phaser.Scene {
         npc.canWander = true;
       }
     }
-    zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
+    zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length, blockTime: this.blockTime });
   }
 
   async handleNewBlock() {
@@ -346,7 +354,7 @@ class MainScene extends Phaser.Scene {
 
       if (minedNpcs.length === 0) {
         this.train.depart();
-        zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
+        zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length, blockTime: this.blockTime });
         return;
       }
 
@@ -354,7 +362,7 @@ class MainScene extends Phaser.Scene {
       const total = minedNpcs.length;
       const onBoarded = () => {
         boarded++;
-        zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
+        zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length, blockTime: this.blockTime });
         if (boarded >= total) this.train.depart();
       };
 
@@ -373,7 +381,7 @@ class MainScene extends Phaser.Scene {
         npc.moveAlongPath(path, true, onBoarded);
       }
 
-      zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length });
+      zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length, blockTime: this.blockTime });
     } finally {
       clearTimeout(blockTimeout);
       this.blockProcessing = false;

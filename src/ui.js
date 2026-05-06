@@ -64,13 +64,13 @@ export function initUI() {
 
   // --- Elapsed timer state ---
   const elapsedEl = document.getElementById('zm-elapsed-value');
-  let lastBlockHeight = null;
-  let lastBlockTime = Date.now();
+  let lastBlockTimestamp = null; // Unix epoch (seconds) from server
 
-  // Update elapsed display every second
+  // Update elapsed display every second using real block timestamp
   setInterval(() => {
-    if (!elapsedEl) return;
-    const totalSec = Math.floor((Date.now() - lastBlockTime) / 1000);
+    if (!elapsedEl || !lastBlockTimestamp) return;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const totalSec = Math.max(0, nowSec - lastBlockTimestamp);
     if (totalSec < 60) {
       elapsedEl.textContent = t('elapsedSeconds', { n: totalSec });
     } else {
@@ -83,18 +83,14 @@ export function initUI() {
   // --- Stats updates ---
   zmEvents.on('stats', (data) => {
     if (blockEl && data.height != null) {
-      // Detect new block → reset elapsed timer
-      if (lastBlockHeight !== null && data.height > lastBlockHeight) {
-        lastBlockTime = Date.now();
-      }
-      if (lastBlockHeight === null) {
-        lastBlockHeight = data.height;
-      }
-      lastBlockHeight = data.height;
       blockEl.textContent = Number(data.height).toLocaleString();
     }
     if (mempoolEl && data.mempool != null) {
       mempoolEl.textContent = data.mempool;
+    }
+    // Update block timestamp for elapsed timer
+    if (data.blockTime) {
+      lastBlockTimestamp = data.blockTime;
     }
   });
 
