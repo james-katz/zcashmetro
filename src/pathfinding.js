@@ -90,7 +90,8 @@ export function bfs(start, goal, grid) {
 export function bfsClosestDoor(start, doors, grid) {
   let bestPath = [];
   for (const door of doors) {
-    const goal = grid[door.y] && grid[door.y][door.x];
+    const doorX = Math.round(door.x);
+    const goal = grid[door.y] && grid[door.y][doorX];
     if (!goal) continue;
     const path = bfs(start, goal, grid);
     if (path.length > 0 && (bestPath.length === 0 || path.length < bestPath.length)) {

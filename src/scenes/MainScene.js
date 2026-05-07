@@ -182,7 +182,7 @@ class MainScene extends Phaser.Scene {
         // Door row (walkable at door positions — path to train)
         if (y === this.doorY || y === this.doorY + 1) {
           for (const door of this.doorPositions) {
-            if (Math.abs(x - door.x) <= 1) collides = false;
+            if (Math.abs(x - door.x) <= 1.5) collides = false;
           }
         }
 
