@@ -1,6 +1,6 @@
 use neon::prelude::*;
 use zcash_primitives::transaction::Transaction;
-use zcash_primitives::consensus::{BranchId, MainNetwork, BlockHeight};
+use zcash_protocol::consensus::{BranchId, MainNetwork, BlockHeight};
 use hex::decode;
 use serde::Serialize;
 // use serde_json::;
