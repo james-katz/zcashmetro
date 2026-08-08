@@ -18,6 +18,7 @@ struct TransactionData {
     n_sapling_spend: Option<usize>,
     n_sapling_output: Option<usize>,
     n_orchard_action: Option<usize>,
+    n_ironwood_action: Option<usize>,
     n_expiry_height: Option<usize>
 }
 
@@ -91,6 +92,11 @@ fn get_transaction_data_js(mut cx: FunctionContext) -> JsResult<JsString> {
             let o_actions = o_bundle.map(|o| o.actions());
             let o_count = o_actions.map(|a| a.len());
 
+            // Ironwood spends / outputs
+            let i_bundle = transaction.ironwood_bundle();
+            let i_actions = i_bundle.map(|i| i.actions());
+            let i_count = i_actions.map(|a| a.len());
+
             let expiry_height: u32 = transaction.expiry_height().into();
 
             let tx_json = serde_json::to_string(&TransactionData {
@@ -100,6 +106,7 @@ fn get_transaction_data_js(mut cx: FunctionContext) -> JsResult<JsString> {
                 n_sapling_spend: Some(z_spend_count).unwrap(),
                 n_sapling_output: Some(z_output_count).unwrap(),
                 n_orchard_action: Some(o_count).unwrap(),
+                n_ironwood_action: Some(i_count).unwrap(),
                 n_expiry_height: Some(expiry_height as usize)
             }).unwrap();
             Ok(cx.string(tx_json))

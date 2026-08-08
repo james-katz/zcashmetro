@@ -39,14 +39,22 @@ function classifyTxType(tx) {
     if (tx.n_transparent_vout > 0) return 't2t';
     if (tx.n_sapling_output > 0) return 't2z';
     if (tx.n_orchard_action > 0) return 't2o';
+    if (tx.n_ironwood_action > 0) return 't2i';
   } else if (tx.n_sapling_spend > 0) {
     if (tx.n_transparent_vout > 0) return 'z2t';
     if (tx.n_sapling_output > 0) return 'z2z';
     if (tx.n_orchard_action > 0) return 'z2o';
+    if (tx.n_ironwood_action > 0) return 'z2i';
   } else if (tx.n_orchard_action > 0) {
     if (tx.n_transparent_vout > 0) return 'o2t';
     if (tx.n_sapling_output > 0) return 'o2z';
+    if (tx.n_ironwood_action > 0) return 'o2i';
     return 'o2o';
+  } else if (tx.n_ironwood_action > 0) {
+    if (tx.n_transparent_vout > 0) return 'i2t';
+    if (tx.n_sapling_output > 0) return 'i2z';
+    if (tx.n_orchard_action > 0) return 'i2o';
+    return 'i2i';
   }
   return 'unknown';
 }
@@ -228,6 +236,7 @@ function listenForMempool() {
       n_sapling_spend: txjson.n_sapling_spend,
       n_sapling_output: txjson.n_sapling_output,
       n_orchard_action: txjson.n_orchard_action,
+      n_ironwood_action: txjson.n_ironwood_action,
       height: tx.height,
       expiry: txjson.n_expiry_height,
     };

@@ -21,12 +21,19 @@ function poolsFromType(txType) {
     t2t: ['transparent', 'transparent'],
     t2z: ['transparent', 'sapling'],
     t2o: ['transparent', 'orchard'],
+    t2i: ['transparent', 'ironwood'],
     z2t: ['sapling', 'transparent'],
     z2z: ['sapling', 'sapling'],
     z2o: ['sapling', 'orchard'],
+    z2i: ['sapling', 'ironwood'],
     o2t: ['orchard', 'transparent'],
     o2z: ['orchard', 'sapling'],
     o2o: ['orchard', 'orchard'],
+    o2i: ['orchard', 'ironwood'],
+    i2t: ['ironwood', 'transparent'],
+    i2z: ['ironwood', 'sapling'],
+    i2o: ['ironwood', 'orchard'],
+    i2i: ['ironwood', 'ironwood'],
   };
   const pools = map[txType] || ['unknown', 'unknown'];
   return `${t('pool' + pools[0].charAt(0).toUpperCase() + pools[0].slice(1))} → ${t('pool' + pools[1].charAt(0).toUpperCase() + pools[1].slice(1))}`;
@@ -34,9 +41,16 @@ function poolsFromType(txType) {
 
 /** Color class for tx type in inspector */
 function typeColorClass(txType) {
-  if (txType === 'z2z' || txType === 'o2o') return 'gold';
-  if (txType === 'z2o' || txType === 'o2z') return 'silver';
-  if (txType === 't2z' || txType === 't2o' || txType === 'z2t' || txType === 'o2t') return 'bronze';
+  if (txType === 'z2z' || txType === 'o2o' || txType === 'i2i') return 'gold';
+  if (
+    txType === 'z2o' || txType === 'o2z' ||
+    txType === 'z2i' || txType === 'i2z' ||
+    txType === 'o2i' || txType === 'i2o'
+  ) return 'silver';
+  if (
+    txType === 't2z' || txType === 't2o' || txType === 't2i' ||
+    txType === 'z2t' || txType === 'o2t' || txType === 'i2t'
+  ) return 'bronze';
   return '';
 }
 

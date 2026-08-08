@@ -52,6 +52,7 @@ const translations = {
     poolTransparent: 'transparent',
     poolSapling: 'sapling',
     poolOrchard: 'orchard',
+    poolIronwood: 'ironwood',
 
     // Loading
     loading: 'Loading...',
@@ -109,6 +110,7 @@ const translations = {
     poolTransparent: 'transparente',
     poolSapling: 'sapling',
     poolOrchard: 'orchard',
+    poolIronwood: 'ironwood',
 
     loading: 'Carregando...',
     retrying: 'Tentando novamente...',
@@ -162,6 +164,7 @@ const translations = {
     poolTransparent: 'transparente',
     poolSapling: 'sapling',
     poolOrchard: 'orchard',
+    poolIronwood: 'ironwood',
 
     loading: 'Cargando...',
     retrying: 'Reintentando...',
@@ -215,6 +218,7 @@ const translations = {
     poolTransparent: 'прозрачный',
     poolSapling: 'sapling',
     poolOrchard: 'orchard',
+    poolIronwood: 'ironwood',
 
     loading: 'Загрузка...',
     retrying: 'Повторная попытка...',
@@ -268,6 +272,7 @@ const translations = {
     poolTransparent: '透明',
     poolSapling: 'sapling',
     poolOrchard: 'orchard',
+    poolIronwood: 'ironwood',
 
     loading: '加载中...',
     retrying: '重试中...',

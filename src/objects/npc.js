@@ -37,16 +37,20 @@ class NPC extends Phaser.GameObjects.Container {
     this.typeText = 'Transparent';
     this.shieldTexture = undefined;
 
-    if (this.txType === 't2z' || this.txType === 't2o') {
+    if (this.txType === 't2z' || this.txType === 't2o' || this.txType === 't2i') {
       this.shieldTexture = 'bronze';
       this.typeText = 'Shielding';
-    } else if (this.txType === 'z2t' || this.txType === 'o2t') {
+    } else if (this.txType === 'z2t' || this.txType === 'o2t' || this.txType === 'i2t') {
       this.shieldTexture = 'bronze';
       this.typeText = 'Deshielding';
-    } else if (this.txType === 'z2o' || this.txType === 'o2z') {
+    } else if (
+      this.txType === 'z2o' || this.txType === 'o2z' ||
+      this.txType === 'z2i' || this.txType === 'i2z' ||
+      this.txType === 'o2i' || this.txType === 'i2o'
+    ) {
       this.shieldTexture = 'silver';
       this.typeText = 'Partially Shielded';
-    } else if (this.txType === 'z2z' || this.txType === 'o2o') {
+    } else if (this.txType === 'z2z' || this.txType === 'o2o' || this.txType === 'i2i') {
       this.shieldTexture = 'gold';
       this.typeText = 'Fully Shielded';
     }
