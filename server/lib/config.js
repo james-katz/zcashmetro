@@ -17,6 +17,7 @@ const bool = (name, def) => {
 
 module.exports = {
   // --- HTTP ---
+  HOST: process.env.HOST || '0.0.0.0',
   PORT: num('PORT', 3000),
   USE_HTTPS: bool('USE_HTTPS', false),
   SSL_KEY: process.env.SSL_KEY || 'privkey.pem',

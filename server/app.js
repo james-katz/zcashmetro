@@ -44,8 +44,14 @@ if (supervised) {
 
 if (!decoder.isLoaded()) {
   die('native decoder failed to load (run `npm run build-release` in server/)', decoder.loadError());
+} else if (decoder.mode() === 'legacy-json') {
+  log.warn(
+    `Native decoder: ${decoder.hello()} (legacy compatibility mode). ` +
+      'Rebuild index.node with `npm run build-release` during the next deployment.',
+  );
+} else {
+  log.info(`Native decoder: ${decoder.hello()} (${decoder.mode()})`);
 }
-log.info(`Native decoder: ${decoder.hello()}`);
 
 const svc = new MempoolService(cfg);
 
@@ -92,24 +98,24 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/', (req, res) => {
+app.get(['/', '/api'], (req, res) => {
   res.send('Hello from Express!');
 });
 
 /** Legacy: { height, blockTime } */
-app.get('/latestblock', (req, res) => {
+app.get(['/latestblock', '/api/latestblock'], (req, res) => {
   const t = svc.tip;
   if (!t) return res.status(503).json({ error: 'Failed to get latest block' });
   res.json({ height: t.height, blockTime: t.blockTime });
 });
 
 /** Legacy: [{ txid, type }] */
-app.get('/mempool', (req, res) => {
+app.get(['/mempool', '/api/mempool'], (req, res) => {
   res.type('application/json').send(mempoolJson());
 });
 
 /** Legacy: { height } (mined) | { height: -1 } (pending) | { height: -1, error: true } */
-app.get('/txinfo', async (req, res) => {
+app.get(['/txinfo', '/api/txinfo'], async (req, res) => {
   const txid = String(req.query.txid || '').trim().toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(txid)) return res.json({ height: -1, error: true });
   try {
@@ -123,13 +129,13 @@ app.get('/txinfo', async (req, res) => {
  * New: atomic snapshot used by the frontend.
  * { epoch, status, height, blockTime, mempool: [{txid,type}], mined: [{txid,height}] }
  */
-app.get('/state', (req, res) => {
+app.get(['/state', '/api/state'], (req, res) => {
   if (!svc.tip) return res.status(503).json({ error: 'starting', status: svc.status, epoch: svc.gen });
   res.type('application/json').send(stateJson());
 });
 
 /** New: self-diagnostics. 200 when healthy, 503 otherwise. */
-app.get('/health', (req, res) => {
+app.get(['/health', '/api/health'], (req, res) => {
   const h = svc.health();
   res.status(h.status === 'ok' ? 200 : 503).json(h);
 });
@@ -153,8 +159,8 @@ server.requestTimeout = 15000;
 server.headersTimeout = 10000;
 server.keepAliveTimeout = 5000;
 server.on('error', (e) => die('HTTP server error', e));
-server.listen(cfg.PORT, () => {
-  log.info(`App listening at ${cfg.USE_HTTPS ? 'https' : 'http'}://localhost:${cfg.PORT}`);
+server.listen(cfg.PORT, cfg.HOST, () => {
+  log.info(`App listening at ${cfg.USE_HTTPS ? 'https' : 'http'}://${cfg.HOST}:${cfg.PORT}`);
 });
 
 svc.start();

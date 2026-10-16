@@ -4,11 +4,23 @@
 const path = require('path');
 
 let native = null;
-let loadError = null;
+let nativeLoadError = null;
 try {
   native = require(path.join(__dirname, '..', 'index.node'));
 } catch (e) {
-  loadError = e;
+  nativeLoadError = e;
+}
+
+function mode(addon = native) {
+  if (addon && typeof addon.decodeTransaction === 'function') return 'buffer-object';
+  if (addon && typeof addon.getTransactionData === 'function') return 'legacy-json';
+  return null;
+}
+
+function loadError() {
+  if (nativeLoadError) return nativeLoadError;
+  if (!mode()) return new Error('native addon exports neither decodeTransaction nor getTransactionData');
+  return null;
 }
 
 /**
@@ -49,26 +61,47 @@ function classifyTxType(tx) {
  * @returns {{ txid: string, type: string, expiry: number, counts: object }}
  * @throws if the addon is missing or the transaction can't be decoded
  */
-function decode(data, heightHint = 0) {
-  if (!native) throw new Error(`native decoder not loaded: ${loadError && loadError.message}`);
+function decodeWith(addon, data, heightHint = 0) {
+  const addonMode = mode(addon);
+  if (!addonMode) throw new Error('native decoder does not expose a supported decoding function');
+
   const buf = typeof data === 'string' ? Buffer.from(data, 'hex') : Buffer.from(data);
   const h = Number(heightHint);
-  const j = native.decodeTransaction(buf, Number.isFinite(h) && h > 0 && h < 2 ** 32 ? h : 0);
-  if (!j || typeof j.txid !== 'string' || !/^[0-9a-f]{64}$/.test(j.txid)) {
+  const safeHeight = Number.isFinite(h) && h > 0 && h < 2 ** 32 ? Math.floor(h) : 0;
+
+  let j;
+  if (addonMode === 'buffer-object') {
+    j = addon.decodeTransaction(buf, safeHeight);
+  } else {
+    const json = addon.getTransactionData(buf.toString('hex'), String(safeHeight));
+    j = typeof json === 'string' ? JSON.parse(json) : json;
+  }
+
+  // Older addons serialized the txid as a quoted string inside JSON.
+  const txid = typeof j?.txid === 'string' ? j.txid.replaceAll('"', '').toLowerCase() : '';
+  if (!/^[0-9a-f]{64}$/.test(txid)) {
     throw new Error('decoder returned an invalid txid');
   }
+  const counts = { ...j, txid };
   return {
-    txid: j.txid,
-    type: classifyTxType(j),
-    expiry: Number(j.n_expiry_height) || 0,
-    counts: j,
+    txid,
+    type: classifyTxType(counts),
+    expiry: Number(counts.n_expiry_height) || 0,
+    counts,
   };
+}
+
+function decode(data, heightHint = 0) {
+  if (!native) throw new Error(`native decoder not loaded: ${nativeLoadError && nativeLoadError.message}`);
+  return decodeWith(native, data, heightHint);
 }
 
 module.exports = {
   decode,
+  decodeWith,
   classifyTxType,
-  isLoaded: () => native !== null,
-  loadError: () => loadError,
-  hello: () => (native ? native.hello() : null),
+  isLoaded: () => mode() !== null,
+  loadError,
+  mode,
+  hello: () => (native && typeof native.hello === 'function' ? native.hello() : 'loaded'),
 };
