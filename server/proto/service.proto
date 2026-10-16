@@ -93,8 +93,19 @@ message Exclude {
     repeated bytes txid = 1;
 }
 
+// The TreeState is derived from the Zcash z_gettreestate rpc.
+message TreeState {
+    string network = 1;     // "main" or "test"
+    uint64 height = 2;      // block height
+    string hash = 3;        // block id
+    uint32 time = 4;        // Unix epoch time when the block was mined
+    string saplingTree = 5; // sapling commitment tree state
+    string orchardTree = 6; // orchard commitment tree state
+}
+
 service CompactTxStreamer {
     rpc GetLatestBlock(ChainSpec) returns (BlockID) {}
+    rpc GetTreeState(BlockID) returns (TreeState) {}
     rpc GetBlock(BlockID) returns (CompactBlock) {}
     rpc GetTaddressBalance(AddressList) returns (Balance) {}
     rpc GetLightdInfo(Empty) returns (LightdInfo) {}

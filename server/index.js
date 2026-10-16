@@ -1,300 +1,105 @@
-const express = require('express');
-const cors = require('cors');
-
-const native = require('./index.node');
-
-const sequelize = require('./database/index.js');
-
-const grpc = require('./grpc_connector');
-
-const https = require('https');
-const fs = require('fs');
-
-const useHttps = false;
-
-const app = express();
-app.use(cors()); // to allow cross origin requests
-
-const PORT = process.env.PORT || 3000;
-const GRPC_SERVER = process.env.GRPC_SERVER_URL || 'infra.zcashbr.com:9067';
-
-// Initialize the gRPC connector
-const client = grpc.init(GRPC_SERVER);
-
-console.log(native.hello());
-
-/** In-memory list of mempool transactions (mirrors the DB for fast lookups). */
-let mempoolTx = [];
-
-/** Simple lock to avoid concurrent DB writes. */
-let dbLock = false;
-
 /**
- * Classify a transaction by its input/output pool types.
- * @param {{ n_transparent_vin: number, n_transparent_vout: number, n_sapling_spend: number, n_sapling_output: number, n_orchard_action: number }} tx
- * @returns {string} Classification like "t2t", "t2z", "z2z", "o2o", etc.
- */
-function classifyTxType(tx) {
-  if (tx.n_transparent_vin > 0) {
-    if (tx.n_transparent_vout > 0) return 't2t';
-    if (tx.n_sapling_output > 0) return 't2z';
-    if (tx.n_orchard_action > 0) return 't2o';
-    if (tx.n_ironwood_action > 0) return 't2i';
-  } else if (tx.n_sapling_spend > 0) {
-    if (tx.n_transparent_vout > 0) return 'z2t';
-    if (tx.n_sapling_output > 0) return 'z2z';
-    if (tx.n_orchard_action > 0) return 'z2o';
-    if (tx.n_ironwood_action > 0) return 'z2i';
-  } else if (tx.n_orchard_action > 0) {
-    if (tx.n_transparent_vout > 0) return 'o2t';
-    if (tx.n_sapling_output > 0) return 'o2z';
-    if (tx.n_ironwood_action > 0) return 'o2i';
-    return 'o2o';
-  } else if (tx.n_ironwood_action > 0) {
-    if (tx.n_transparent_vout > 0) return 'i2t';
-    if (tx.n_sapling_output > 0) return 'i2z';
-    if (tx.n_orchard_action > 0) return 'i2o';
-    return 'i2i';
-  }
-  return 'unknown';
-}
-
-/**
- * Insert a transaction into the SQLite database.
- * @param {{ txid: string, n_transparent_vin: number, n_transparent_vout: number, n_sapling_spend: number, n_sapling_output: number, n_orchard_action: number }} tx
- */
-async function addTxToDatabase(tx) {
-  const txtype = classifyTxType(tx);
-  try {
-    const rec = await sequelize.models.transaction.create({
-      id: tx.txid,
-      type: txtype,
-    });
-    if (rec) {
-      console.log(`Added ${tx.txid}`);
-    }
-  } catch (e) {
-    console.log('Unable to add tx:', tx.txid);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// API Endpoints (kept exactly as before for dependent projects)
-// ---------------------------------------------------------------------------
-
-app.get('/', (req, res) => {
-  res.send('Hello from Express!');
-});
-
-app.get('/latestblock', async (req, res) => {
-  try {
-    const block = await grpc.getLatestBlock(client);
-    const height = Number(block.height);
-
-    // Fetch the block's timestamp so the client can show elapsed time
-    let blockTime = null;
-    try {
-      const compactBlock = await grpc.getBlock(client, height);
-      if (compactBlock && compactBlock.time) {
-        blockTime = Number(compactBlock.time);
-      }
-    } catch (e) {
-      // Non-critical — just omit the timestamp
-    }
-
-    res.json({ height, blockTime });
-  } catch (err) {
-    console.error('Failed to get latest block:', err.message);
-    res.status(500).json({ error: 'Failed to get latest block' });
-  }
-});
-
-app.get('/txinfo', async (req, res) => {
-  const txid = req.query.txid;
-  try {
-    if (!txid) throw new Error('txid is undefined');
-
-    const tx = await grpc.getTransaction(client, txid);
-    console.log('tx is mined in height:', tx.height);
-    if (tx.height > 0) {
-      res.json({ height: Number(tx.height) });
-    } else {
-      res.json({ height: -1 });
-    }
-  } catch (e) {
-    // tx is invalid somehow — if it's in db, destroy it
-    const TxModel = sequelize.models.transaction;
-    try {
-      if (!txid) throw new Error('txid is undefined');
-      const t = await TxModel.findOne({ where: { id: txid } });
-      if (t) {
-        await t.destroy();
-      }
-    } catch (dbErr) {
-      console.log('tx not in database or txid is undefined');
-    }
-    res.json({ height: -1, error: true });
-  }
-});
-
-app.get('/mempool', async (req, res) => {
-  let tx_list = [];
-  try {
-    const db_tx = await sequelize.models.transaction.findAll();
-    // Filter: only return transactions that are still in the mempool
-    const TxModel = sequelize.models.transaction;
-    for (const tx of db_tx) {
-      try {
-        const t = await grpc.getTransaction(client, tx.id);
-        if (t.height > 0) {
-          // Already mined — remove from DB and skip
-          console.log(`/mempool cleanup: ${tx.id} already mined at ${t.height}`);
-          await TxModel.destroy({ where: { id: tx.id } });
-          mempoolTx = mempoolTx.filter((m) => m.txid !== tx.id);
-          continue;
-        }
-      } catch (e) {
-        // Transaction doesn't exist anymore — remove from DB
-        console.log(`/mempool cleanup: ${tx.id} no longer exists`);
-        await TxModel.destroy({ where: { id: tx.id } });
-        mempoolTx = mempoolTx.filter((m) => m.txid !== tx.id);
-        continue;
-      }
-      tx_list.push({ txid: tx.id, type: tx.type });
-    }
-  } catch (e) {
-    console.log(e);
-  }
-  res.json(tx_list);
-});
-
-// ---------------------------------------------------------------------------
-// HTTPS / HTTP listener
-// ---------------------------------------------------------------------------
-
-if (useHttps) {
-  const options = {
-    key: fs.readFileSync('privkey.pem'),
-    cert: fs.readFileSync('cert.pem'),
-  };
-  https.createServer(options, app).listen(PORT);
-  console.log(`App listening at https://localhost:${PORT}`);
-} else {
-  app.listen(PORT, () => {
-    console.log(`App listening at http://localhost:${PORT}`);
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Database initialization & mempool stream
-// ---------------------------------------------------------------------------
-
-sequelize
-  .authenticate()
-  .then(async () => {
-    console.log('Connection to SQLite has been established successfully.');
-
-    try {
-      // Start with a clean database
-      const TxModel = sequelize.models.transaction;
-      await TxModel.truncate();
-
-      listenForMempool();
-    } catch (e) {
-      console.log(e);
-    }
-  })
-  .catch((err) => {
-    console.error('Unable to connect to the database:', err);
-  });
-
-/**
- * Open a gRPC mempool stream, process incoming transactions, and handle
- * stream closure (new block mined) by cleaning up mined transactions.
+ * ZcashMetro server — supervisor entry point.
  *
- * When the stream closes (block boundary), we iterate the in-memory list
- * with a proper for...of + await so DB operations finish before we update
- * the list.
+ * Runs the API (app.js) in a child process and watches it:
+ *
+ *  - The worker sends a heartbeat every HEARTBEAT_MS from its event loop.
+ *    If heartbeats stop for HEARTBEAT_TIMEOUT_MS (infinite loop, deadlock,
+ *    runaway synchronous work) the worker is SIGKILLed.
+ *  - Whenever the worker exits (crash, fatal self-check, kill) a brand new
+ *    one is started with a completely fresh in-memory mempool.
+ *  - Restarts back off exponentially (1s → 30s) if the worker keeps dying
+ *    quickly, and the backoff resets after a minute of healthy uptime.
+ *
+ * A JavaScript infinite loop can't be detected from inside the same thread,
+ * which is why this lives in a separate process.
  */
-function listenForMempool() {
-  console.log('Starting new stream');
-  let txListener = grpc.getMempoolStream(client);
+process.env.ZM_ROLE = 'supervisor';
 
-  txListener.on('newtx', async (tx) => {
-    if (dbLock) return;
+const { fork } = require('child_process');
+const path = require('path');
+const cfg = require('./lib/config');
+const log = require('./lib/logger')('main');
 
-    const txdata = native.getTransactionData(
-      Buffer.from(tx.data, 'hex').toString('hex'),
-      tx.height
+const WORKER = path.join(__dirname, 'app.js');
+const MIN_BACKOFF = 1000;
+const MAX_BACKOFF = 30000;
+
+let child = null;
+let lastBeat = 0;
+let lastStatus = null;
+let startedAt = 0;
+let backoff = MIN_BACKOFF;
+let restarts = 0;
+let stopping = false;
+let restartTimer = null;
+
+function startWorker() {
+  restartTimer = null;
+  startedAt = Date.now();
+  lastBeat = Date.now(); // grace period for boot
+  lastStatus = null;
+  child = fork(WORKER, process.argv.slice(2), {
+    cwd: __dirname,
+    env: { ...process.env, ZM_ROLE: 'worker' },
+    stdio: 'inherit',
+  });
+  log.info(`Worker started (pid ${child.pid}${restarts ? `, restart #${restarts}` : ''})`);
+
+  child.on('message', (m) => {
+    if (m && m.type === 'hb') {
+      lastBeat = Date.now();
+      if (m.status !== lastStatus) {
+        log.info(`Worker status: ${m.status} (epoch ${m.epoch}, mempool ${m.mempool})`);
+        lastStatus = m.status;
+      }
+    }
+  });
+
+  const proc = child;
+  proc.on('exit', (code, signal) => {
+    if (child === proc) child = null;
+    if (stopping) {
+      log.info('Worker stopped.');
+      process.exit(0);
+    }
+    const uptime = Date.now() - startedAt;
+    if (uptime > 60000) backoff = MIN_BACKOFF;
+    restarts++;
+    log.warn(
+      `Worker exited (code ${code}, signal ${signal}) after ${Math.round(uptime / 1000)}s — ` +
+        `restarting with fresh state in ${backoff}ms`,
     );
-    const txjson = JSON.parse(txdata);
-
-    const newtx = {
-      txid: txjson.txid.replaceAll('"', ''),
-      n_transparent_vin: txjson.n_transparent_vin,
-      n_transparent_vout: txjson.n_transparent_vout,
-      n_sapling_spend: txjson.n_sapling_spend,
-      n_sapling_output: txjson.n_sapling_output,
-      n_orchard_action: txjson.n_orchard_action,
-      n_ironwood_action: txjson.n_ironwood_action,
-      height: tx.height,
-      expiry: txjson.n_expiry_height,
-    };
-
-    if (!mempoolTx.some((t) => t.txid === newtx.txid)) {
-      if (newtx.expiry > 0) {
-        await addTxToDatabase(newtx);
-        mempoolTx.push(newtx);
-      }
-    }
-  });
-
-  txListener.on('closed', async () => {
-    console.log('Stream closed.');
-    dbLock = true;
-
-    const TxModel = sequelize.models.transaction;
-    const stillUnmined = [];
-
-    // Use for...of so each await completes before the next iteration
-    for (const tx of mempoolTx) {
-      try {
-        const t = await grpc.getTransaction(client, tx.txid);
-        if (t.height > 0) {
-          console.log(`${tx.txid} mined, removing it from db ...`);
-          await TxModel.destroy({ where: { id: tx.txid } });
-        } else {
-          console.log(`${tx.txid} not mined yet, keep it until it gets mined`);
-          stillUnmined.push(tx);
-        }
-      } catch (err) {
-        console.log("Transaction doesn't exist, remove it from db");
-        try {
-          await TxModel.destroy({ where: { id: tx.txid } });
-        } catch (destroyErr) {
-          console.log('tx is undefined');
-        }
-      }
-    }
-
-    mempoolTx = stillUnmined;
-    txListener = undefined;
-    dbLock = false;
-
-    // Wait a sec before opening a new stream, just in case.
-    setTimeout(() => {
-      listenForMempool();
-    }, 1000);
-  });
-
-  txListener.on('error', (e) => {
-    console.log(`Stream closed with error ${e}`);
-    txListener = undefined;
-    dbLock = false;
-
-    // Wait 5 sec before opening a new stream, just in case.
-    setTimeout(() => {
-      listenForMempool();
-    }, 5 * 1000);
+    restartTimer = setTimeout(startWorker, backoff);
+    backoff = Math.min(backoff * 2, MAX_BACKOFF);
   });
 }
+
+// Liveness check
+setInterval(() => {
+  if (!child || stopping) return;
+  const silent = Date.now() - lastBeat;
+  if (silent > cfg.HEARTBEAT_TIMEOUT_MS) {
+    log.error(
+      `Worker unresponsive for ${Math.round(silent / 1000)}s (event loop blocked / infinite loop?) — killing it`,
+    );
+    lastBeat = Date.now(); // don't re-kill while it dies
+    child.kill('SIGKILL');
+  }
+}, 2000);
+
+function shutdown(sig) {
+  if (stopping) return;
+  stopping = true;
+  log.info(`${sig} received — stopping worker`);
+  if (restartTimer) clearTimeout(restartTimer);
+  if (!child) process.exit(0);
+  child.kill('SIGTERM');
+  setTimeout(() => {
+    if (child) child.kill('SIGKILL');
+    process.exit(0);
+  }, 5000).unref();
+}
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP', 'SIGUSR2']) process.on(sig, () => shutdown(sig));
+
+startWorker();

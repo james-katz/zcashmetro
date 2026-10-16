@@ -1,6 +1,6 @@
 # server
 
-This project was bootstrapped by [create-neon](https://www.npmjs.com/package/create-neon).
+This directory contains the ZcashMetro API supervisor, worker, mempool engine, gRPC adapter, and Rust/Neon transaction decoder.
 
 ## Installing server
 
@@ -63,7 +63,15 @@ Same as [`npm build`](#npm-build) but, builds the module with the [`release`](ht
 
 ### `npm test`
 
-Runs the unit tests by calling `cargo test`. You can learn more about [adding tests to your Rust code](https://doc.rust-lang.org/book/ch11-01-writing-tests.html) from the [Rust book](https://doc.rust-lang.org/book/).
+Runs both `cargo test` and the Node regression suite in `test/`. Use `npm run test:rust` or `npm run test:node` to run one suite.
+
+### `node index.js`
+
+Starts the production supervisor. The supervisor forks `app.js`, monitors worker heartbeats, and restarts the worker with backoff after a crash or blocked event loop.
+
+### `node app.js`
+
+Starts the API worker directly, which is useful for local debugging. Production should use `index.js` so the worker is supervised.
 
 ## Project Layout
 
@@ -73,10 +81,16 @@ The directory structure of this project is:
 server/
 ├── Cargo.toml
 ├── README.md
+├── app.js
+├── grpc_connector.js
+├── index.js
 ├── index.node
+├── lib/
 ├── package.json
+├── proto/
 ├── src/
-|   └── lib.rs
+│   └── lib.rs
+├── test/
 └── target/
 ```
 

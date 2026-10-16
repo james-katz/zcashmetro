@@ -1,6 +1,6 @@
 {
   "name": "server",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "",
   "main": "index.node",
   "scripts": {
@@ -8,7 +8,9 @@
     "build-debug": "npm run build --",
     "build-release": "npm run build -- --release",
     "install": "npm run build-release",
-    "test": "cargo test",
+    "test": "npm run test:rust && npm run test:node",
+    "test:rust": "cargo test",
+    "test:node": "node --test test/decoder.test.js test/service.test.js",
     "dev": "cd .. && npm run dev"
   },
   "author": "",
@@ -20,8 +22,6 @@
     "@grpc/grpc-js": "^1.10.10",
     "@grpc/proto-loader": "^0.7.13",
     "cors": "^2.8.5",
-    "express": "^4.19.2",
-    "sequelize": "^6.37.3",
-    "sqlite3": "^5.1.7"
+    "express": "^4.19.2"
   }
 }

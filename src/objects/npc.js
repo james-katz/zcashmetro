@@ -284,6 +284,13 @@ class NPC extends Phaser.GameObjects.Container {
     if (this.shadowTween) { this.shadowTween.destroy(); this.shadowTween = null; }
     if (this.shieldTween) { this.shieldTween.destroy(); this.shieldTween = null; }
 
+    // Stop any movement tween still driving this container
+    try {
+      for (const tw of this.scn.tweens.getTweensOf(this)) {
+        if (tw.isPlaying()) tw.stop();
+      }
+    } catch (_) { /* scene shutting down */ }
+
     this.destroy();
   }
 }

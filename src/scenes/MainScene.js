@@ -26,10 +26,15 @@ class MainScene extends Phaser.Scene {
 
     this.npcs = [];
     this.dataLock = false;
-    this.blockProcessing = false;
+    this.pollSeq = 0;
+    this.pollStartedAt = 0;
     this.lastTime = 0;
     this.timeInterval = 1000;
     this.blured = false;
+
+    // Server epoch — changes when the server restarted with a fresh mempool
+    this.epoch = undefined;
+    this.epochGraceUntil = 0;
 
     // Track recently-mined txids to prevent ghost re-spawns
     this.recentlyMined = new Set();
@@ -78,6 +83,7 @@ class MainScene extends Phaser.Scene {
     if (data.block.blockTime) {
       this.blockTime = data.block.blockTime;
     }
+    this.epoch = data.block.epoch;
   }
 
   create() {
@@ -133,10 +139,8 @@ class MainScene extends Phaser.Scene {
         this.blured = true;
       } else {
         this.blured = false;
-        // Force an immediate full resync when the tab regains focus
-        // Reset locks that may have gone stale while the tab was hidden
-        this.dataLock = false;
-        this.blockProcessing = false;
+        // Force an immediate full resync when the tab regains focus.
+        // pollServer() supersedes any in-flight poll (sequence number).
         this.pollServer();
       }
     });
@@ -145,8 +149,6 @@ class MainScene extends Phaser.Scene {
     this.game.events.on('blur', () => { this.blured = true; }, this);
     this.game.events.on('focus', () => {
       this.blured = false;
-      this.dataLock = false;
-      this.blockProcessing = false;
       this.pollServer();
     }, this);
   }
@@ -205,6 +207,11 @@ class MainScene extends Phaser.Scene {
     if (time - this.lastTime < this.timeInterval) return;
     this.lastTime = time;
     this.updateWandering(time);
+    // Safety net: never let a poll lock stay held forever.
+    if (this.dataLock && Date.now() - this.pollStartedAt > 15000) {
+      console.warn('Poll lock held too long — releasing');
+      this.dataLock = false;
+    }
     if (!this.dataLock) this.pollServer();
   }
 
@@ -237,59 +244,129 @@ class MainScene extends Phaser.Scene {
   // Server polling
   // ---------------------------------------------------------------------------
 
-  async pollServer() {
-    this.dataLock = true;
+  /**
+   * Fetch an atomic snapshot of the station state from the server.
+   * Falls back to the legacy endpoints if the server has no /state.
+   * @returns {Promise<{ height: number, blockTime: number|null, epoch?: number, mempool: {txid: string, type: string}[], mined: {txid: string, height: number}[]|null }>}
+   */
+  async fetchState() {
     try {
+      const { data } = await http.get('/state');
+      return data;
+    } catch (err) {
+      if (!(err.response && err.response.status === 404)) throw err;
       const [mempoolRes, blockRes] = await Promise.all([
         http.get('/mempool'), http.get('/latestblock'),
       ]);
-
-      // Capture block timestamp for elapsed display
-      if (blockRes.data.blockTime) {
-        this.blockTime = blockRes.data.blockTime;
-      }
-
-      // Handle new block FIRST — remove mined NPCs before spawning new ones.
-      // This prevents mined txs from being re-spawned as ghost NPCs.
-      if (blockRes.data.height > this.currHeight) {
-        this.currHeight = blockRes.data.height;
-        await this.handleNewBlock();
-      }
-
-      await this.spawnNewTransactions(mempoolRes.data);
-    } catch (err) {
-      console.error('Poll error:', err.message);
-    } finally {
-      this.dataLock = false;
+      return {
+        height: blockRes.data.height,
+        blockTime: blockRes.data.blockTime,
+        mempool: mempoolRes.data,
+        mined: null, // unknown: treat disappeared txs as mined on a new block
+      };
     }
   }
 
-  async spawnNewTransactions(mempool) {
-    const pb = this.platformBounds;
-    const serverTxids = new Set(mempool.map((tx) => tx.txid));
+  async pollServer() {
+    const seq = ++this.pollSeq;
+    this.dataLock = true;
+    this.pollStartedAt = Date.now();
+    try {
+      const state = await this.fetchState();
+      // A newer poll was started meanwhile (e.g. tab refocus) — drop this one.
+      if (seq !== this.pollSeq) return;
+      if (!state || !Array.isArray(state.mempool) || !(state.height > 0)) return;
 
-    // Remove NPCs whose transactions are no longer in the server mempool
-    // (they were mined and cleaned up server-side)
-    const staleNpcs = [];
-    const freshNpcs = [];
+      // Capture block timestamp for elapsed display
+      if (state.blockTime) {
+        this.blockTime = state.blockTime;
+      }
+
+      // Server restarted with a fresh mempool: give it a moment to refill
+      // before removing zebras that are temporarily missing.
+      if (state.epoch !== undefined && state.epoch !== this.epoch) {
+        if (this.epoch !== undefined) {
+          console.warn(`Server epoch changed ${this.epoch} → ${state.epoch}; resyncing`);
+          this.epochGraceUntil = Date.now() + 8000;
+        }
+        this.epoch = state.epoch;
+      }
+
+      const minedMap = state.mined
+        ? new Map(state.mined.map((m) => [m.txid, m.height]))
+        : null;
+
+      // Handle new block FIRST — mined NPCs board before new ones spawn.
+      // This prevents mined txs from being re-spawned as ghost NPCs.
+      const newBlock = state.height > this.currHeight;
+      if (newBlock) this.currHeight = state.height;
+
+      this.syncNpcs(state.mempool, minedMap, newBlock);
+    } catch (err) {
+      console.error('Poll error:', err.message);
+    } finally {
+      if (seq === this.pollSeq) this.dataLock = false;
+    }
+  }
+
+  emitStats() {
+    zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length, blockTime: this.blockTime });
+  }
+
+  /**
+   * Reconcile the zebras on screen with the server snapshot.
+   * @param {{txid: string, type: string}[]} mempool
+   * @param {Map<string, number>|null} minedMap  txid → height (null = unknown)
+   * @param {boolean} newBlock
+   */
+  syncNpcs(mempool, minedMap, newBlock) {
+    const serverTxids = new Set(mempool.map((tx) => tx.txid));
+    const inGrace = Date.now() < this.epochGraceUntil;
+
+    // Split NPCs: still pending / mined (board the train) / gone (vanish)
+    const kept = [];
+    const boarding = [];
     for (const npc of this.npcs) {
       if (npc.isDestroyed) continue;
-      if (!serverTxids.has(npc.txid)) {
-        staleNpcs.push(npc);
+      if (serverTxids.has(npc.txid)) {
+        kept.push(npc);
+        continue;
+      }
+      const mined = minedMap ? minedMap.has(npc.txid) : newBlock;
+      if (mined) {
+        boarding.push(npc);
+        this.rememberMined(npc.txid);
+      } else if (inGrace) {
+        kept.push(npc);
       } else {
-        freshNpcs.push(npc);
+        // Dropped / expired / evicted — not mined
+        npc.cleanup();
       }
     }
-    for (const npc of staleNpcs) {
-      npc.cleanup();
-    }
-    this.npcs = freshNpcs;
+    this.npcs = kept;
+
+    if (newBlock || boarding.length) this.boardTrain(boarding, newBlock);
+
+    this.spawnNewTransactions(mempool, minedMap);
+    this.emitStats();
+  }
+
+  rememberMined(txid) {
+    // Remember this txid so it won't be re-spawned as a ghost
+    this.recentlyMined.add(txid);
+    setTimeout(() => this.recentlyMined.delete(txid), 30000);
+  }
+
+  spawnNewTransactions(mempool, minedMap) {
+    const pb = this.platformBounds;
+    const present = new Set(this.npcs.map((n) => n.txid));
 
     // Add new transactions not yet represented by NPCs
     for (const tx of mempool) {
-      if (this.npcs.some((n) => n.txid === tx.txid)) continue;
+      if (present.has(tx.txid)) continue;
       // Skip recently-mined txids to prevent ghost re-spawns
       if (this.recentlyMined.has(tx.txid)) continue;
+      if (minedMap && minedMap.has(tx.txid)) continue;
       const startTile = this.grid[this.spawnTile.y] && this.grid[this.spawnTile.y][this.spawnTile.x];
       if (!startTile) continue;
 
@@ -317,6 +394,7 @@ class MainScene extends Phaser.Scene {
         this.scaleFactor + 1
       );
       this.npcs.push(npc);
+      present.add(tx.txid);
 
       if (!this.blured) {
         npc.moveAlongPath(path, false);
@@ -326,70 +404,53 @@ class MainScene extends Phaser.Scene {
         npc.canWander = true;
       }
     }
-    zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length, blockTime: this.blockTime });
   }
 
-  async handleNewBlock() {
-    if (this.blockProcessing) return;
-    this.blockProcessing = true;
+  /**
+   * Walk mined zebras to the nearest door, then (optionally) send the train.
+   * @param {NPC[]} minedNpcs
+   * @param {boolean} departs  true when a new block was mined
+   */
+  boardTrain(minedNpcs, departs) {
+    const total = minedNpcs.length;
+    if (total === 0) {
+      if (departs) this.train.depart();
+      return;
+    }
 
-    // Safety timeout: reset blockProcessing after 15s max to prevent stuck state
-    const blockTimeout = setTimeout(() => {
-      this.blockProcessing = false;
+    let boarded = 0;
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(safety);
+      if (departs) this.train.depart();
+    };
+    // Safety: never wait more than 15s for stragglers before departing.
+    const safety = setTimeout(() => {
+      for (const npc of minedNpcs) npc.cleanup();
+      finish();
     }, 15000);
 
-    try {
-      const minedNpcs = [];
-      const keptNpcs = [];
-      for (const npc of this.npcs) {
-        if (npc.isDestroyed) continue;
-        try {
-          const r = await http.get(`/txinfo/?txid=${npc.txid}`);
-          if (r.data.height > 0) {
-            minedNpcs.push(npc);
-            // Remember this txid so it won't be re-spawned as a ghost
-            this.recentlyMined.add(npc.txid);
-            setTimeout(() => this.recentlyMined.delete(npc.txid), 30000);
-          } else {
-            keptNpcs.push(npc);
-          }
-        } catch { keptNpcs.push(npc); }
-      }
-      this.npcs = keptNpcs;
+    const onBoarded = () => {
+      boarded++;
+      this.emitStats();
+      if (boarded >= total) finish();
+    };
 
-      if (minedNpcs.length === 0) {
-        this.train.depart();
-        zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length, blockTime: this.blockTime });
-        return;
-      }
+    for (const npc of minedNpcs) {
+      npc.canWander = false;
+      npc.stopCurrentTween();
+      if (this.blured) { npc.cleanup(); onBoarded(); continue; }
 
-      let boarded = 0;
-      const total = minedNpcs.length;
-      const onBoarded = () => {
-        boarded++;
-        zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length, blockTime: this.blockTime });
-        if (boarded >= total) this.train.depart();
-      };
+      const sx = this.worldToTileX(npc.x);
+      const sy = this.worldToTileY(npc.y);
+      const start = this.grid[sy] && this.grid[sy][sx];
+      if (!start) { npc.cleanup(); onBoarded(); continue; }
 
-      for (const npc of minedNpcs) {
-        npc.canWander = false;
-        npc.stopCurrentTween();
-        if (this.blured) { npc.cleanup(); onBoarded(); continue; }
-
-        const sx = this.worldToTileX(npc.x);
-        const sy = this.worldToTileY(npc.y);
-        const start = this.grid[sy] && this.grid[sy][sx];
-        if (!start) { npc.cleanup(); onBoarded(); continue; }
-
-        const path = bfsClosestDoor(start, this.doorPositions, this.grid);
-        if (!path.length) { npc.cleanup(); onBoarded(); continue; }
-        npc.moveAlongPath(path, true, onBoarded);
-      }
-
-      zmEvents.emit('stats', { height: this.currHeight, mempool: this.npcs.length, blockTime: this.blockTime });
-    } finally {
-      clearTimeout(blockTimeout);
-      this.blockProcessing = false;
+      const path = bfsClosestDoor(start, this.doorPositions, this.grid);
+      if (!path.length) { npc.cleanup(); onBoarded(); continue; }
+      npc.moveAlongPath(path, true, onBoarded);
     }
   }
 }

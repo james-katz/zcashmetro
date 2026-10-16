@@ -53,13 +53,28 @@ class LoadingScene extends Phaser.Scene {
 
   async fetchInitialData() {
     try {
-      const [mempoolRes, blockRes] = await Promise.all([
-        http.get('/mempool'), http.get('/latestblock'),
-      ]);
-      console.log(blockRes.data)
-      this.scene.start('MainScene', { npcData: mempoolRes.data, block: blockRes.data });
+      let npcData;
+      let block;
+      try {
+        // Atomic snapshot (height + mempool are guaranteed consistent)
+        const { data } = await http.get('/state');
+        npcData = data.mempool;
+        block = { height: data.height, blockTime: data.blockTime, epoch: data.epoch };
+      } catch (err) {
+        if (err.response && err.response.status === 404) {
+          // Older server without /state
+          const [mempoolRes, blockRes] = await Promise.all([
+            http.get('/mempool'), http.get('/latestblock'),
+          ]);
+          npcData = mempoolRes.data;
+          block = blockRes.data;
+        } else {
+          throw err;
+        }
+      }
+      this.scene.start('MainScene', { npcData, block });
     } catch (err) {
-      console.error('Failed to fetch initial data:', err);
+      console.error('Failed to fetch initial data:', err.message || err);
       this.time.delayedCall(3000, () => this.fetchInitialData());
     }
   }
