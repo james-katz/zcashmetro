@@ -112,7 +112,7 @@ npm install
 | HTTPS mode | `USE_HTTPS` | `false` |
 | TLS files | `SSL_KEY`, `SSL_CERT` | `privkey.pem`, `cert.pem` |
 | Log verbosity | `LOG_LEVEL` | `info` |
-| Client API URL (build time) | `VITE_API_URL` | `/api` on the production page's origin; `http://localhost:3000` in development |
+| Client API URL (build time) | `VITE_API_URL` | Current hostname on port `3000`; `http://localhost:3000` in development |
 
 Additional watchdog and reconciliation intervals can be overridden with the variables documented in `server/lib/config.js`.
 
@@ -143,53 +143,25 @@ The built client files are output to `dist/`.
 
 ### HTTPS in production
 
-The recommended setup is to terminate HTTPS in Nginx or Caddy, serve `dist/` there, and proxy `/api/` to the Node worker over localhost. Keep Node itself on HTTP:
+The frontend connects directly to port `3000` using the same protocol as the page. For `https://zcashmetro.io`, its default API URL is therefore `https://zcashmetro.io:3000`.
+
+Copy the server environment template once and edit it:
 
 ```bash
-HOST=127.0.0.1 PORT=3000 USE_HTTPS=false pm2 restart ZcashMetro --update-env
+cp server/.env.example server/.env
+nano server/.env
+pm2 restart ZcashMetro
 ```
 
-Example Nginx server block:
+The server loads `server/.env` on every start, regardless of PM2's working directory. Shell or PM2 environment variables override values from the file. Verify the result with `curl https://zcashmetro.io:3000/latestblock`. The certificate must cover `zcashmetro.io`, and the user running PM2 must have permission to read both certificate files.
 
-```nginx
-server {
-    listen 443 ssl;
-    server_name zcashmetro.io;
-
-    ssl_certificate     /etc/letsencrypt/live/zcashmetro.io/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/zcashmetro.io/privkey.pem;
-
-    root /path/to/phaser-hello-world/dist;
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:3000/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
-```
-
-With that layout, the frontend automatically uses `https://zcashmetro.io/api`; no production `VITE_API_URL` is needed. For a separate API origin, set it when building the frontend:
+To use another API address, set `VITE_API_URL` while building the frontend:
 
 ```bash
-VITE_API_URL=https://api.zcashmetro.io npm run build
+VITE_API_URL=https://api.example.com npm run build
 ```
 
-Direct TLS from Node is also supported when a reverse proxy is not available:
-
-```bash
-USE_HTTPS=true HOST=0.0.0.0 PORT=3000 \
-SSL_KEY=/etc/letsencrypt/live/zcashmetro.io/privkey.pem \
-SSL_CERT=/etc/letsencrypt/live/zcashmetro.io/fullchain.pem \
-npm start
-```
-
-In that case, build the frontend with `VITE_API_URL=https://zcashmetro.io:3000`.
+`VITE_API_URL` is a frontend build-time setting, unlike the server variables above. It can also be placed in a root `.env.production` file before running `npm run build`.
 
 ### Native addon deployments
 
@@ -210,14 +182,14 @@ The exported keys should include `decodeTransaction`. The server temporarily sup
 
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api` | GET | Basic API response |
-| `/api/mempool` | GET | Returns all mempool transactions `[{ txid, type }]` |
-| `/api/latestblock` | GET | Returns `{ height, blockTime }` for the latest block |
-| `/api/txinfo?txid=<hex>` | GET | Returns `{ height }` (> 0 if mined, -1 if unconfirmed) |
-| `/api/state` | GET | Returns one atomic `{ epoch, status, height, blockTime, mempool, mined }` snapshot |
-| `/api/health` | GET | Returns worker, stream, tip, memory, and watchdog diagnostics |
+| `/` | GET | Basic API response |
+| `/mempool` | GET | Returns all mempool transactions `[{ txid, type }]` |
+| `/latestblock` | GET | Returns `{ height, blockTime }` for the latest block |
+| `/txinfo?txid=<hex>` | GET | Returns `{ height }` (> 0 if mined, -1 if unconfirmed) |
+| `/state` | GET | Returns one atomic `{ epoch, status, height, blockTime, mempool, mined }` snapshot |
+| `/health` | GET | Returns worker, stream, tip, memory, and watchdog diagnostics |
 
-The original unprefixed endpoint paths remain available for compatibility and for proxies that strip `/api`.
+The `/api/*` aliases also remain available.
 
 ## Tests
 

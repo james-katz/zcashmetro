@@ -14,6 +14,8 @@
  * A JavaScript infinite loop can't be detected from inside the same thread,
  * which is why this lives in a separate process.
  */
+require('./lib/load-env');
+
 process.env.ZM_ROLE = 'supervisor';
 
 const { fork } = require('child_process');

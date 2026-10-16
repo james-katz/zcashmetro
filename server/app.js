@@ -9,6 +9,8 @@
  * All endpoints are served from memory — no request ever waits on
  * lightwalletd except /txinfo for unknown txids (and that has a deadline).
  */
+require('./lib/load-env');
+
 process.env.ZM_ROLE = process.env.ZM_ROLE || 'worker';
 
 const express = require('express');

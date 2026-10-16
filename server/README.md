@@ -75,7 +75,9 @@ Starts the API worker directly, which is useful for local debugging. Production 
 
 ## Production notes
 
-Prefer terminating HTTPS at a reverse proxy and running the worker with `HOST=127.0.0.1 USE_HTTPS=false`. The API is available under both `/api/*` and the legacy unprefixed paths. Direct TLS is available with `USE_HTTPS=true`, `SSL_KEY`, and `SSL_CERT`.
+For the default production frontend configuration, run the worker directly on HTTPS port 3000 with `USE_HTTPS=true`, `HOST=0.0.0.0`, `SSL_KEY`, and `SSL_CERT`. The API is available under both the unprefixed paths and `/api/*` aliases.
+
+Copy `.env.example` to `.env` to persist these settings. Both `index.js` and direct `app.js` starts load this file before reading configuration, and existing shell or PM2 variables take precedence. Restarting PM2 is enough to pick up file changes.
 
 The native `index.node` file is not committed. Every production deployment must run `npm run build-release` before restarting the process. A `legacy-json` startup warning means the server found an old addon and is using its compatibility path; rebuild the addon to enable the current `buffer-object` API.
 

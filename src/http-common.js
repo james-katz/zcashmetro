@@ -2,11 +2,13 @@ import axios from "axios";
 
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
 
-// Production defaults to the page's own HTTPS origin. Put the API behind the
-// same reverse proxy as the static site and no URL configuration is needed.
-// Split-origin deployments can still set VITE_API_URL at build time.
+// In production, use the same hostname and protocol as the page, but connect
+// directly to the Node API on port 3000. VITE_API_URL remains available for
+// deployments that use a different host or port.
 const apiBaseUrl = configuredApiUrl || (
-  import.meta.env.DEV ? "http://localhost:3000" : `${window.location.origin}/api`
+  import.meta.env.DEV
+    ? "http://localhost:3000"
+    : `${window.location.protocol}//${window.location.hostname}:3000`
 );
 
 export default axios.create({
